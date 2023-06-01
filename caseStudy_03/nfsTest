@@ -1,0 +1,75 @@
+#!/usr/bin/python3
+
+import sys
+
+""" - Help
+
+    This code implements "Case Study 3" cited by the https://TestingComplexSystems.com web site.
+    
+    This code forms a comprehensive "test platform" that stands up and runs a number of
+    "nfs" server and client instances through their paces on (3) Linux test hosts.
+
+    The set-up and configuration for this code have been bundled into the code for you.
+    The only requirements of you at this time are:
+    
+    -- Have / deploy (3) Linux "test hosts" to run nfs on.
+
+    -- Have / deploy (1) Linux "test platform" to clone "nfsTest" on.
+    
+    -- The IP addresses of each of the (4) hosts must be "ping-able" by all the other hosts.
+       (A verification procedure runs automatically at startup time to make sure this is true).
+    
+    -- Each of the (4) hosts must have a login with root privileges (Their credentials will be
+       exposed by this code).
+    
+    Run "nfsTest" on the test platform. It will check for and install any needed code and help
+    you create any needed configuration files. See the website cited above and the code below
+    for more information.
+    
+"""
+
+#
+# Routine to handle in-line documentation/text (text in this source file
+#     can be extracted at run time and used for help or templates)
+#
+def getCodeLines(tag, substitutionList = []):
+
+    lineRef = 0
+    harvestingText = False
+    harvestedText = ''
+    
+    while lineRef <= len(CodeLines):
+    
+        line = CodeLines[lineRef]
+        lineRef += 1
+
+        if (not harvestingText) and ('""" - ' in line):
+            indent = line.find('"""')
+            line = line[indent:]
+            line = line.replace('""" - ', "")
+            if line == tag:
+                harvestingText = True
+                
+        elif (not harvestingText) and (lineRef == len(CodeLines)):
+            print ("Can not find in-line text tag '%s'" % (tag))
+            x = 1/0
+
+        elif harvestingText and ('"""' in line):
+            return (harvestedText % (substitutionList))
+            
+        elif harvestingText:
+            harvestedText += line[indent:] + "\n"
+
+
+###################
+#
+# Main
+#
+###################
+
+# Load in this program's code for in-line text processing
+CodeLines = open(sys.argv[0], "r").read().splitlines()
+
+print (getCodeLines("Help"))
+input ("Enter <CR> to continue: ")
+

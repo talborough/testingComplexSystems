@@ -1,0 +1,42 @@
+#
+# The data definition file for the animalFarm_01 sample program.
+#
+# To generate the Python code:
+#
+#       ./gDSCodeGen animalFarm_01    >>>>>>> Produces animalFarm_01.py
+#
+# gFarm - The farms
+#
+# Keyword       Item name               Default column value if cited
+# =======       =========               =============================
+defineTable     gFarm                                           # Table definition
+defineColumn    gFarm_Name                                      # The farm's name
+defineColumn    gFarm_gCounty_Ref       None                    # The county a farm is in
+defineColumn    gFarm_RowStatus         None                    # For concurrency control but - not used
+endTable
+#
+# gCounty - The county a farm is in
+#
+defineTable     gCounty                 MasterLock              # Table definition
+defineColumn    gCounty_Name                                    # The county's name
+defineIndex     gCounty_Name2Ref                                # A dictionary to look up county index by name
+defineColumn    gCounty_RowStatus       None                    # For concurrency control but - not used
+endTable
+#
+# gAnimal - The animals on a farm
+#
+# Keyword       Item name               Row lock routine if cited
+# =======       =========               =========================
+defineTable     gAnimal                 MasterLock              # Table definition / row lock
+defineColumn    gAnimal_gFarm_Ref                               # The farm owning the animal
+defineColumn    gAnimal_Type                                    # The kind of animal
+defineColumn    gAnimal_Name                                    # The animal's name
+defineColumn    gAnimal_RowStatus       None                    # This table uses concurrency control
+endTable
+
+#
+# Examples
+#
+defineUnary     xxx                     None                    # A single value
+defineList      yyy                                             # A random list
+defineDict      zzz                                             # A random distionary

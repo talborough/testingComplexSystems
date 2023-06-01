@@ -1,0 +1,941 @@
+#!/usr/bin/python3
+
+#####
+#
+# The overall goal is to have a completely self-contained gDSCodeGen test facility.
+#
+# This provokes errors from the code generator by presenting a suitably invalid data
+# definition file to it and verifying the error output message.
+#
+#####
+
+import subprocess
+import sys
+
+CodeLines = []                      # Hold all the lines of this program to service extraction of embedded code
+
+
+##################################
+#
+# Issue a command locally and get the goodies back to the caller
+#
+##################################
+def issueCmdLocal(cmd, debug = False):
+
+    returnObject = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+
+    if debug:
+        print (returnObject)
+
+    return (returnObject.returncode, returnObject.stdout, returnObject.stderr)
+    
+
+##################################
+#
+# Routine to handle in-line documentation/text (text in this source file
+#     can be extracted at run time and used for help or templates)
+#
+##################################
+def getCodeLines(tag):
+
+    lineIndex = 0
+    harvestingText = False
+    harvestedText = ''
+    
+    while lineIndex <= len(CodeLines):
+    
+        line = CodeLines[lineIndex]
+        lineIndex += 1
+
+        if (not harvestingText) and ('""" - ' in line):
+            indent = line.find('"""')
+            line = line[indent:]
+            line = line.replace('""" - ', "")
+            if line == tag:
+                harvestingText = True
+                
+        elif (not harvestingText) and (lineIndex == len(CodeLines)):
+            print ("Exiting with error - can not find in-line text tag '%s'" % (tag))
+            sys.exit(1)
+
+        elif harvestingText and ('"""' in line):
+            return (harvestedText)
+            
+        elif harvestingText:
+            harvestedText += line[indent:] + "\n"
+
+
+##################################
+#
+# Run one test - extract and shove a .dd file through gDSCodeGen and verify the error message generated
+#
+##################################
+def runOneTest(dataTag):
+
+    data = getCodeLines(f"{dataTag} data")
+    handle = open("testFile.dd", "w")
+    handle.write(data)
+    handle.close()
+    
+    expectedOutput = getCodeLines(f"{dataTag} expected output")[:-1]
+    
+    (retCode, stdout, stderr) = issueCmdLocal(f"./gDSCodeGen testFile")
+    
+    actualOutput = stdout.splitlines()[1]
+    if actualOutput != expectedOutput:
+    
+        print (f"{dataTag} - Error - Expected - {expectedOutput} \n                Actual - {actualOutput}")
+        print ("")
+        exit (1)
+        
+    else:
+       
+        print (f"{dataTag} - Success - {actualOutput}")
+        (retCode, stdout, stderr) = issueCmdLocal(f"rm testFile.dd testFile.py")
+
+
+##################################
+#
+# Mainline code
+#
+##################################
+#
+
+print ("")
+print ("If the error output looks a little mysterious run './gDSCodeGen testFile' directly")
+
+#
+# Load in this program's code for in-line text extraction
+#
+CodeLines = open(sys.argv[0], "r").read().splitlines()
+
+print ("")
+
+
+# Start by comparing animalFarm_02.py against a "gold" file embedded below
+########################################
+
+# Generate some real .py output
+(retCode, stdout, stderr) = issueCmdLocal(f"./gDSCodeGen animalFarm_02")
+
+# Get expectation from below
+expectedOutput = getCodeLines(f"animalFarm_test gold")
+
+handle = open("animalFarm_gold.py", "w")
+handle.write(expectedOutput)
+handle.close()
+
+# Compare the files
+(retCode, stdout, stderr) = issueCmdLocal(f"diff animalFarm_02.py animalFarm_gold.py")
+
+if retCode:
+    print ("Failure! - diff animalFarm_02.py animalFarm_gold.py failed!")
+    exit (1)
+    
+print ("Output of animalFarm_02.dd matches gold data embedded in this test file")
+
+
+########################################
+
+""" - A01 data
+#
+#
+defineTable xxx
+abcd
+#
+"""
+
+""" - A01 expected output
+Keyword 'abcd' not in vocabulary at line 4 of the input file
+"""
+
+runOneTest("A01")
+
+
+########################################
+
+""" - A02 data
+#
+#
+defineTable x_xx
+
+"""
+
+""" - A02 expected output
+A 'defineTable' was found with underscores in the table name at line 3 of the input file
+"""
+
+runOneTest("A02")
+
+
+########################################
+
+""" - B01 data
+#
+#
+defineTable xxx
+defineTable xxx
+#
+"""
+
+""" - B01 expected output
+A 'defineTable' was found before the previous table definition ended at line 4 of the input file
+"""
+
+runOneTest("B01")
+
+
+########################################
+
+""" - B02 data
+#
+#
+defineColumn xxx
+#
+"""
+
+""" - B02 expected output
+Inner keywords found before 'defineTable' at line 3 of the input file
+"""
+
+runOneTest("B02")
+
+
+########################################
+
+""" - B03 data
+#
+#
+defineTable xxx
+defineUnary
+#
+"""
+
+""" - B03 expected output
+An invalid keyword was found inside the table definition at line 4 of the input file
+"""
+
+runOneTest("B03")
+
+
+########################################
+
+""" - B04 data
+#
+#
+defineTable xxx
+#
+"""
+
+""" - B04 expected output
+An 'endTable' was missing at line 4 of the input file
+"""
+
+runOneTest("B04")
+
+
+########################################
+
+""" - B05 data
+#
+#
+defineTable xxx
+defineColumn xxx_ColA
+defineColumn xxy_ColB
+endTable
+#
+"""
+
+""" - B05 expected output
+Inner keywords do not start with current table name at line 5 of the input file
+"""
+
+runOneTest("B05")
+
+
+########################################
+
+""" - C01 data
+#
+#
+defineTable xxx
+defineColumn xxx_ColA
+defineColumn xxx_ColA
+defineColumn xxx_Name
+defineColumn xxx_RowStatus
+endTable
+#
+"""
+
+""" - C01 expected output
+Duplicate element name 'xxx_ColA' defined at line 5 of the input file
+"""
+
+runOneTest("C01")
+
+
+########################################
+
+
+""" - C02 data
+#
+#
+defineTable xxx
+defineColumn xxx_ColA
+defineColumn xxx_ColB_
+defineColumn xxx_Name
+defineColumn xxx_RowStatus
+endTable
+#
+"""
+
+""" - C02 expected output
+Leading or trailing underscores are not allowed at line 5 of the input file
+"""
+
+runOneTest("C02")
+
+
+########################################
+
+""" - J01 data
+#
+#
+defineTable xxx
+defineColumn xzx_Name
+defineColumn xxx_RowStatus
+endTable
+#
+"""
+
+""" - J01 expected output
+Inner keywords do not start with current table name at line 4 of the input file
+"""
+
+runOneTest("J01")
+
+
+########################################
+
+""" - D01 data
+#
+#
+defineTable xxx
+defineColumn xxx_Col1
+defineColumn xxx_yyy__Ref
+defineColumn xxx_Name
+defineColumn xxx_RowStatus
+endTable
+
+defineTable yyy
+defineColumn yyy_Name
+defineColumn yyy_RowStatus
+endTable
+#
+"""
+
+""" - D01 expected output
+Reference column mis-formatted at line 5 of the input file
+"""
+
+runOneTest("D01")
+
+
+########################################
+
+""" - D02 data
+#
+#
+defineTable xxx
+defineColumn xxx_Col1
+defineColumn xxx_xxx_Ref
+defineColumn xxx_Name
+defineColumn xxx_RowStatus
+endTable
+
+defineTable yyy
+defineColumn yyy_Name
+defineColumn yyy_RowStatus
+endTable
+#
+"""
+
+""" - D02 expected output
+Reference column cites current table at line 5 of the input file
+"""
+
+runOneTest("D02")
+
+
+########################################
+
+""" - D03 data
+#
+#
+defineTable xxx
+defineColumn xxx_Col1
+defineColumn xxx_zzz_Ref
+defineColumn xxx_Name
+defineColumn xxx_RowStatus
+endTable
+
+defineTable yyy
+defineColumn yyy_Name
+defineColumn yyy_RowStatus
+endTable
+#
+"""
+
+""" - D03 expected output
+Reference column refers to a non-existant table at line 5 of the input file
+"""
+
+runOneTest("D03")
+
+
+########################################
+
+""" - E01 data
+#
+#
+defineTable xxx
+defineColumn xxx_Col1
+defineColumn xxx_yyy_Ref
+defineIndex xxx_Name_2Ref
+defineColumn xxx_Name
+defineColumn xxx_RowStatus
+endTable
+
+defineTable yyy
+defineColumn yyy_Name
+defineColumn yyy_RowStatus
+endTable
+#
+"""
+
+""" - E01 expected output
+Index column mis-formatted at line 6 of the input file
+"""
+
+runOneTest("E01")
+
+
+########################################
+
+""" - E02 data
+#
+#
+defineTable xxx
+defineColumn xxx_Col1
+defineColumn xxx_yyy_Ref
+defineIndex xxx_Name2Re
+defineColumn xxx_Name
+defineColumn xxx_RowStatus
+endTable
+
+defineTable yyy
+defineColumn yyy_Name
+defineColumn yyy_RowStatus
+endTable
+#
+"""
+
+""" - E02 expected output
+Index specification does not end with '2Ref' at line 6 of the input file
+"""
+
+runOneTest("E02")
+
+
+########################################
+
+""" - E03 data
+#
+#
+defineTable xxx
+defineColumn xxx_Col1
+defineColumn xxx_yyy_Ref
+defineIndex xxx_Namez2Ref
+defineColumn xxx_Name
+defineColumn xxx_RowStatus
+endTable
+
+defineTable yyy
+defineColumn yyy_Name
+defineColumn yyy_RowStatus
+endTable
+#
+"""
+
+""" - E03 expected output
+Index specification 'Namez' doesn't appear in table definition at line 9 of the input file
+"""
+
+runOneTest("E03")
+
+
+########################################
+
+""" - F01 data
+#
+#
+defineTable xxx
+defineColumn xxx_Col1
+defineColumn xxx_yyy_Ref
+defineColumn xxx_RowStatus
+endTable
+
+defineTable yyy
+defineColumn yyy_Name
+defineColumn yyy_RowStatus
+endTable
+#
+"""
+
+""" - F01 expected output
+Table 'xxx' doesn't have a Name column at line 7 of the input file
+"""
+
+runOneTest("F01")
+
+
+########################################
+
+""" - G01 data
+#
+#
+defineTable xxx
+defineColumn xxx_Col1
+defineColumn xxx_yyy_Ref
+defineColumn xxx_Name
+defineColumn xxx_RowStatus
+endTable
+
+defineTable yyy
+defineColumn yyy_Name
+endTable
+#
+"""
+
+""" - G01 expected output
+Table 'yyy' has no RowStatus routine *last* at line 12 of the input file
+"""
+
+runOneTest("G01")
+
+
+########################################
+
+""" - H01 data
+#
+#
+defineTable xxx
+defineColumn xxx_Col1
+defineColumn xxx_yyy_Ref
+defineColumn xxx_Name
+defineColumn xxx_RowStatus
+endTable
+
+defineList qqq 123
+
+defineTable yyy
+defineColumn yyy_Name
+defineColumn yyy_RowStatus
+endTable
+#
+"""
+
+""" - H01 expected output
+'defineList/Dict' can not have an initial value at line 10 of the input file
+"""
+
+runOneTest("H01")
+
+
+########################################
+
+""" - I01 data
+#
+#
+defineTable xxx
+defineColumn xxx_Col1
+defineColumn xxx_yyy_Ref
+defineColumn xxx_Name
+defineColumn xxx_RowStatus
+endTable
+
+defineList qqq
+
+defineUnary nnn
+
+defineTable yyy
+defineColumn yyy_Name
+defineColumn yyy_RowStatus
+endTable
+#
+"""
+
+""" - I01 expected output
+'defineUnary' must have an initial value at line 12 of the input file
+"""
+
+runOneTest("I01")
+
+
+print ("")
+
+
+""" - animalFarm_test gold
+# To consume this file in a Python program:
+
+#     exec (open('animalFarm_02.py').read())
+
+# Start of gDS include file ...
+
+from multiprocessing import Manager
+gDSMgr = Manager()
+
+gStartTime = gDSMgr.list()
+gStartTime.append(0)
+
+gStopBackgroundProcs = gDSMgr.list()
+gStopBackgroundProcs.append(True)
+
+gMakeTestRun = gDSMgr.list()
+gMakeTestRun.append(False)
+
+gRunStopTime = gDSMgr.list()
+gRunStopTime.append(0)
+
+gCycleStopTime = gDSMgr.list()
+gCycleStopTime.append(0)
+
+gBatchMode = gDSMgr.list()
+gBatchMode.append(False)
+
+gTotalMilkCalculated = gDSMgr.list()
+gTotalMilkCalculated.append(0)
+
+gTotalMilkObserved = gDSMgr.list()
+gTotalMilkObserved.append(0)
+
+gTotalEggsCalculated = gDSMgr.list()
+gTotalEggsCalculated.append(0)
+
+gTotalEggsObserved = gDSMgr.list()
+gTotalEggsObserved.append(0)
+
+gTotalAnimalsCalculated = gDSMgr.list()
+gTotalAnimalsCalculated.append(0)
+
+gTotalAnimalsObserved = gDSMgr.list()
+gTotalAnimalsObserved.append(0)
+
+#
+# Define global shared variables for entity gCounty
+#
+gCounty_Name = gDSMgr.list()
+gCounty_Name2Ref = gDSMgr.dict()
+gCounty_RowStatus = gDSMgr.list()
+
+#
+# Define global shared variables for entity gFarm
+#
+gFarm_Name = gDSMgr.list()
+gFarm_gCounty_Ref = gDSMgr.list()
+gFarm_MilkTotal = gDSMgr.list()
+gFarm_EggsTotal = gDSMgr.list()
+gFarm_RowStatus = gDSMgr.list()
+
+#
+# Define global shared variables for entity gAnimal
+#
+gAnimal_gFarm_Ref = gDSMgr.list()
+gAnimal_Type = gDSMgr.list()
+gAnimal_Name = gDSMgr.list()
+gAnimal_Produced = gDSMgr.list()
+gAnimal_Name2Ref = gDSMgr.dict()
+gAnimal_RowStatus = gDSMgr.list()
+
+#
+# Add a row to table gCounty (using locker = MasterLock)
+#
+def gCounty_AddARowUnderLock(\
+    _RowStatus,\
+    _Name = None,\
+):
+
+    MasterLock('lock')
+
+    gCounty_Name.append(_Name)
+    gCounty_RowStatus.append(_RowStatus)
+    thisRef = len(gCounty_RowStatus) - 1
+
+    if gCounty_Name[thisRef] in gCounty_Name2Ref:
+        print ('')
+        print ('Duplicate key in gCounty_Name2Ref; value = ', gCounty_Name[thisRef])
+        print ('')
+        x = 1/0 # Dup key add attempt (above) to index gCounty_Name2Ref
+    gCounty_Name2Ref[gCounty_Name[thisRef]] = thisRef
+
+    MasterLock('unlock')
+
+    return (thisRef)
+
+#
+# Add a row to table gFarm (using locker = MasterLock)
+#
+def gFarm_AddARowUnderLock(\
+    _gCounty_Ref,\
+    _RowStatus,\
+    _Name = None,\
+    _MilkTotal = 0,\
+    _EggsTotal = 0,\
+):
+
+    MasterLock('lock')
+
+    gFarm_Name.append(_Name)
+    gFarm_gCounty_Ref.append(_gCounty_Ref)
+    gFarm_MilkTotal.append(_MilkTotal)
+    gFarm_EggsTotal.append(_EggsTotal)
+    gFarm_RowStatus.append(_RowStatus)
+    thisRef = len(gFarm_RowStatus) - 1
+
+    MasterLock('unlock')
+
+    return (thisRef)
+
+#
+# Add a row to table gAnimal (using locker = MasterLock)
+#
+def gAnimal_AddARowUnderLock(\
+    _gFarm_Ref,\
+    _Type,\
+    _RowStatus,\
+    _Name = None,\
+    _Produced = 0,\
+):
+
+    MasterLock('lock')
+
+    gAnimal_gFarm_Ref.append(_gFarm_Ref)
+    gAnimal_Type.append(_Type)
+    gAnimal_Name.append(_Name)
+    gAnimal_Produced.append(_Produced)
+    gAnimal_RowStatus.append(_RowStatus)
+    thisRef = len(gAnimal_RowStatus) - 1
+
+    if gAnimal_Name[thisRef] in gAnimal_Name2Ref:
+        print ('')
+        print ('Duplicate key in gAnimal_Name2Ref; value = ', gAnimal_Name[thisRef])
+        print ('')
+        x = 1/0 # Dup key add attempt (above) to index gAnimal_Name2Ref
+    gAnimal_Name2Ref[gAnimal_Name[thisRef]] = thisRef
+
+    MasterLock('unlock')
+
+    return (thisRef)
+
+#
+# Delete erased rows in table gCounty (using locker = MasterLock)
+# Note - this procedure must be written as is because of Python/multiprocessing behavior!
+#
+def gCounty_CompressTableUnderLock():
+
+    MasterLock('lock')
+
+    _Name = []
+    _RowStatus = []
+
+    for tableRef in range(len(gCounty_RowStatus)):
+        if gCounty_RowStatus[tableRef] is None:
+            pass
+            del gCounty_Name2Ref[gCounty_Name[tableRef]]
+        else:
+            pass
+            _Name.append(gCounty_Name[tableRef])
+            _RowStatus.append(gCounty_RowStatus[tableRef])
+
+    del gCounty_Name[:]
+    del gCounty_RowStatus[:]
+
+    for tableRef in range(len(_RowStatus)):
+        gCounty_Name.append(_Name[tableRef])
+        gCounty_RowStatus.append(_RowStatus[tableRef])
+
+
+    for tableRef in range(len(_RowStatus)):
+        gCounty_Name2Ref[gCounty_Name[tableRef]] = tableRef
+
+    MasterLock('unlock')
+
+    return
+
+#
+# Delete erased rows in table gFarm (using locker = MasterLock)
+# Note - this procedure must be written as is because of Python/multiprocessing behavior!
+#
+def gFarm_CompressTableUnderLock():
+
+    MasterLock('lock')
+
+    _Name = []
+    _gCounty_Ref = []
+    _MilkTotal = []
+    _EggsTotal = []
+    _RowStatus = []
+
+    for tableRef in range(len(gFarm_RowStatus)):
+        if gFarm_RowStatus[tableRef] is None:
+            pass
+        else:
+            pass
+            _Name.append(gFarm_Name[tableRef])
+            _gCounty_Ref.append(gFarm_gCounty_Ref[tableRef])
+            _MilkTotal.append(gFarm_MilkTotal[tableRef])
+            _EggsTotal.append(gFarm_EggsTotal[tableRef])
+            _RowStatus.append(gFarm_RowStatus[tableRef])
+
+    del gFarm_Name[:]
+    del gFarm_gCounty_Ref[:]
+    del gFarm_MilkTotal[:]
+    del gFarm_EggsTotal[:]
+    del gFarm_RowStatus[:]
+
+    for tableRef in range(len(_RowStatus)):
+        gFarm_Name.append(_Name[tableRef])
+        gFarm_gCounty_Ref.append(_gCounty_Ref[tableRef])
+        gFarm_MilkTotal.append(_MilkTotal[tableRef])
+        gFarm_EggsTotal.append(_EggsTotal[tableRef])
+        gFarm_RowStatus.append(_RowStatus[tableRef])
+
+    MasterLock('unlock')
+
+    return
+
+#
+# Delete erased rows in table gAnimal (using locker = MasterLock)
+# Note - this procedure must be written as is because of Python/multiprocessing behavior!
+#
+def gAnimal_CompressTableUnderLock():
+
+    MasterLock('lock')
+
+    _gFarm_Ref = []
+    _Type = []
+    _Name = []
+    _Produced = []
+    _RowStatus = []
+
+    for tableRef in range(len(gAnimal_RowStatus)):
+        if gAnimal_RowStatus[tableRef] is None:
+            pass
+            del gAnimal_Name2Ref[gAnimal_Name[tableRef]]
+        else:
+            pass
+            _gFarm_Ref.append(gAnimal_gFarm_Ref[tableRef])
+            _Type.append(gAnimal_Type[tableRef])
+            _Name.append(gAnimal_Name[tableRef])
+            _Produced.append(gAnimal_Produced[tableRef])
+            _RowStatus.append(gAnimal_RowStatus[tableRef])
+
+    del gAnimal_gFarm_Ref[:]
+    del gAnimal_Type[:]
+    del gAnimal_Name[:]
+    del gAnimal_Produced[:]
+    del gAnimal_RowStatus[:]
+
+    for tableRef in range(len(_RowStatus)):
+        gAnimal_gFarm_Ref.append(_gFarm_Ref[tableRef])
+        gAnimal_Type.append(_Type[tableRef])
+        gAnimal_Name.append(_Name[tableRef])
+        gAnimal_Produced.append(_Produced[tableRef])
+        gAnimal_RowStatus.append(_RowStatus[tableRef])
+
+
+    for tableRef in range(len(_RowStatus)):
+        gAnimal_Name2Ref[gAnimal_Name[tableRef]] = tableRef
+
+    MasterLock('unlock')
+
+    return
+
+#
+# Print values out for table 'gCounty' (using locker = MasterLock)
+#
+def gCounty_DumpTable(rangeListToDump = None):
+
+    MasterLock('lock')
+
+    print (f'**************')
+    print (f'**************')
+    print ('    Table %24s (using locker = MasterLock) has %d entries' % ('gCounty', len(gCounty_RowStatus)))
+    print (f'**************')
+    print (f'**************')
+    print (f'')
+
+    for i in range (0, len(gCounty_RowStatus)):
+        if (rangeListToDump is None) or (i in rangeListToDump):
+            print ('    Row reference = %d' % (i))
+            print ('    %30s = %10s' % ('gCounty_Name', gCounty_Name[i]))
+            print ('    %30s = %10s' % ('gCounty_RowStatus', gCounty_RowStatus[i]))
+
+    MasterLock('unlock')
+
+    return
+
+#
+# Print values out for table 'gFarm' (using locker = MasterLock)
+#
+def gFarm_DumpTable(rangeListToDump = None):
+
+    MasterLock('lock')
+
+    print (f'**************')
+    print (f'**************')
+    print ('    Table %24s (using locker = MasterLock) has %d entries' % ('gFarm', len(gFarm_RowStatus)))
+    print (f'**************')
+    print (f'**************')
+    print (f'')
+
+    for i in range (0, len(gFarm_RowStatus)):
+        if (rangeListToDump is None) or (i in rangeListToDump):
+            print ('    Row reference = %d' % (i))
+            print ('    %30s = %10s' % ('gFarm_Name', gFarm_Name[i]))
+            print ('    %30s = %10s  (%30s)' % ('gFarm_gCounty_Ref', gFarm_gCounty_Ref[i], gCounty_Name[gFarm_gCounty_Ref[i]]))
+            print ('    %30s = %10s' % ('gFarm_MilkTotal', gFarm_MilkTotal[i]))
+            print ('    %30s = %10s' % ('gFarm_EggsTotal', gFarm_EggsTotal[i]))
+            print ('    %30s = %10s' % ('gFarm_RowStatus', gFarm_RowStatus[i]))
+
+    MasterLock('unlock')
+
+    return
+
+#
+# Print values out for table 'gAnimal' (using locker = MasterLock)
+#
+def gAnimal_DumpTable(rangeListToDump = None):
+
+    MasterLock('lock')
+
+    print (f'**************')
+    print (f'**************')
+    print ('    Table %24s (using locker = MasterLock) has %d entries' % ('gAnimal', len(gAnimal_RowStatus)))
+    print (f'**************')
+    print (f'**************')
+    print (f'')
+
+    for i in range (0, len(gAnimal_RowStatus)):
+        if (rangeListToDump is None) or (i in rangeListToDump):
+            print ('    Row reference = %d' % (i))
+            print ('    %30s = %10s  (%30s)' % ('gAnimal_gFarm_Ref', gAnimal_gFarm_Ref[i], gFarm_Name[gAnimal_gFarm_Ref[i]]))
+            print ('    %30s = %10s' % ('gAnimal_Type', gAnimal_Type[i]))
+            print ('    %30s = %10s' % ('gAnimal_Name', gAnimal_Name[i]))
+            print ('    %30s = %10s' % ('gAnimal_Produced', gAnimal_Produced[i]))
+            print ('    %30s = %10s' % ('gAnimal_RowStatus', gAnimal_RowStatus[i]))
+
+    MasterLock('unlock')
+
+    return
+t"""

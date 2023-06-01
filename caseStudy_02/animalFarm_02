@@ -1,0 +1,1144 @@
+#!/usr/bin/python3
+
+#
+# animalFarm_02 - A simulation to do 2 things:
+#
+#   -- Display how to build an interactive "test platform" that can serve as a product's random load
+#      and stress test facility.
+#
+#   -- Showcase the "global data store" (gDS) concept that can be at the center of such a test platform.
+#
+# for more background.
+#    
+# There is help text at the bottom of this file for the user *or* (./animalFarm_02 --help)
+#
+# Note this is not an OO implementation despite the several "class" citations below.
+#
+# Consume the gDS definition file animalFarm_02.py (you must first use gDSCodeGen on animalFarm_02.dd):
+#
+#       ./gDSCodeGen animalFarm_02             >>>>>> Produces animalFarm_02.py
+#
+exec (open('animalFarm_02.py').read())
+
+from multiprocessing import Process
+from threading import Thread
+from multiprocessing import Lock
+
+import time
+import sys
+import select
+import random
+import getopt
+
+class Color:
+
+    RED = "\u001b[31m"
+    GREEN = "\u001b[32m"
+    YELLOW = "\u001b[33m"
+    BLUE = "\u001b[34m"
+    MAGENTA = "\u001b[35m"
+    CYAN = "\u001b[36m"
+    WHITE = "\u001b[37m"
+
+
+#
+# Control concurrent access to table rows.
+#
+MasterLockObject = Lock()
+#
+def MasterLock(operation):
+    if operation == "lock":
+        MasterLockObject.acquire()
+    elif operation == "unlock":
+        MasterLockObject.release()
+    else:
+        x = 1/0                                                 # Dump the call stack on programming error
+        
+    return
+        
+#
+# The UI class houses code that gives the UI its look and feel, that starts a run "on its way", that
+# monitors the run's progress, and that services interactive operation.
+#
+class UI:
+
+    # Help the user remember where they are
+    lastCommand = "<none>"
+
+    # The currently displaying screen
+    displayName = "farmSummary"
+    
+    # The background process objects
+    backgroundProcs = []
+    
+    # The count of the 4 possible background actions
+    tcCount = 0
+    rcCount = 0
+    txCount = 0
+    rxCount = 0
+    
+    # Test run attributes
+    runTime = 0
+    cycleTime = 0
+
+    #
+    # Create counties and farms and a starting set of animals. Randomize creation order using spawned processes/threads.
+    # County names are unique; farm names are unique within counties; animal names unique within farms.
+    #
+    def setUp():
+
+        # Start in interactive mode
+        gStartTime[0] = time.time()
+        gMakeTestRun[0] = False
+    
+        # A local routine, called many times, to make one animal on the given farm
+        def makeAnAnimal(farmRef, animalNumber, animalType):
+
+            # This gets all executors running at random times over a 2 to 4 second interval
+            time.sleep(random.uniform(2.0, 4.0))
+    
+            # The makes a row atomically
+            animalRef = gAnimal_AddARowUnderLock(_gFarm_Ref = farmRef, _Name = "%s #%2.2d (%2.2d)" % (animalType, animalNumber + 1, farmRef), \
+                                                   _Type = animalType, _RowStatus = "")
+            print (f"Added {gAnimal_Name[animalRef]} to {gFarm_Name[farmRef]} in {gCounty_Name[gFarm_gCounty_Ref[farmRef]]}")
+            
+            # Let's track this number atomically
+            MasterLock("lock")
+            gTotalAnimalsCalculated[0] += 1
+            MasterLock("unlock")
+            
+            return
+            
+        # Make a farm then all the animals in it
+        def makeAFarm(countyRef, farmNumber):
+
+            # This gets all executors running at random times over a 0 to 3 second interval
+            time.sleep(random.uniform(0.0, 3.0))
+    
+            farmRef = gFarm_AddARowUnderLock(_gCounty_Ref = countyRef, _Name = "Farm #%2.2d" % (farmNumber + 1), \
+                                               _RowStatus = "")
+            print (f"Added {gFarm_Name[farmRef]} in {gCounty_Name[countyRef]}")
+            
+            threads = []
+            
+            for animalNumber in range(3):
+                threads.append(Thread(target = makeAnAnimal, args = (farmRef, animalNumber, "Cow")))
+                threads[-1].start()
+                
+            for animalNumber in range(3):
+                threads.append(Thread(target = makeAnAnimal, args = (farmRef, animalNumber, "Chicken")))
+                threads[-1].start()
+                
+            for thread in threads:
+                thread.join()
+                
+            return
+            
+        # Make some counties then the farms in it
+        def makeACounty(countyNumber):
+
+            # This gets all executors running at random times over a 0 to 3 second interval
+            time.sleep(random.uniform(0.0, 3.0))
+    
+            countyRef = gCounty_AddARowUnderLock(_Name = "County #%2.2d" % (countyNumber + 1), _RowStatus = "")
+            print (f"Added {gCounty_Name[countyRef]}")
+            
+            threads = []
+            
+            for farmNumber in range(3):
+                threads.append(Thread(target = makeAFarm, args = (countyRef, farmNumber)))
+                threads[-1].start()
+                
+            for thread in threads:
+                thread.join()
+                
+            return
+
+        processes = []
+        
+        for countyNumber in range(3):
+            processes.append(Process(target = makeACounty, args = (countyNumber, )))
+            processes[-1].start()
+            
+        for process in processes:
+            process.join()
+            
+        gTotalAnimalsObserved[0] = len(gAnimal_RowStatus)
+        
+        return
+
+    # One of the 2 main displays - by farm
+    def displayFarmSummary():
+    
+        #
+        # The challenge here is to produce a sorted display of items that have non-unique names for things
+        #
+        
+        print ("")
+        print ("                                   Cow  Chx  Busy   New    New   Milk   Eggs ")
+        print ("      County            Farm       Cnt  Cnt         Milk   Eggs  Total  Total")
+        print ("      ======            ====       ===  ===  ====   ====   ====  =====  =====")
+        print ("")
+        
+        # Go by counties - prepare a dict of county names
+        countyName2Ref = {}
+        for (countyRef, countyName) in enumerate(gCounty_Name):
+            countyName2Ref[countyName] = countyRef
+            
+        for (countyName, countyRef) in sorted(countyName2Ref.items()):
+
+            # Go by farms (in counties) - prepare a dict of farm names in this county
+            farmName2Ref = {}
+            for (farmRef, farmName) in enumerate(gFarm_Name):
+                if gFarm_gCounty_Ref[farmRef] == countyRef:
+                    farmName2Ref[farmName] = farmRef
+            
+            for (farmName, farmRef) in sorted(farmName2Ref.items()):
+                    
+                # Go by animals (in farms)
+                
+                cowCount = 0
+                chickenCount = 0
+                inProcessingCount = 0
+                
+                milkPumped = 0
+                eggsGathered = 0
+                
+                # For each un-erased animal on this farm
+                for (animalRef, animalFarmRef) in enumerate(gAnimal_gFarm_Ref):
+                
+                    if (animalFarmRef == farmRef) and (gAnimal_RowStatus[animalRef] is not None):
+                    
+                        if gAnimal_Type[animalRef] == "Cow":
+                            cowCount += 1
+                            milkPumped += gAnimal_Produced[animalRef]
+                        
+                        if gAnimal_Type[animalRef] == "Chicken":
+                            chickenCount += 1
+                            eggsGathered += gAnimal_Produced[animalRef]
+                            
+                        if gAnimal_RowStatus[animalRef] != "":
+                            inProcessingCount += 1
+
+                x = y = Color.WHITE
+                if inProcessingCount:
+                    x = Color.RED
+                    
+                print (" %15s %15s  %4d %4d  %s%4d%s %6d %6d %6d %6d" % (countyName, gFarm_Name[farmRef], cowCount, chickenCount, \
+                                                               x, inProcessingCount, y, milkPumped, eggsGathered, \
+                                                               gFarm_MilkTotal[farmRef], gFarm_EggsTotal[farmRef]))
+                                                               
+                countyName = ""
+                
+        return
+
+    # The other display - a single character per animal ("c" or "x"), colored by animal status
+    def displayAnimalDetail():
+    
+        out = ""
+        print ("")
+    
+        for (animalRef, animalRowStatus) in enumerate(gAnimal_RowStatus):
+        
+            animal = "c"
+            if gAnimal_Type[animalRef] == "Chicken":
+                animal = "x"
+                
+            x = Color.WHITE
+            if animalRowStatus is None:
+                x = Color.CYAN
+            elif animalRowStatus != "":
+                x = Color.RED
+            
+            out += x + animal + " "
+            
+            if len(out) > 100:
+                print (" ", out)
+                out = ""
+                
+        print (" ", out, Color.WHITE)
+        
+        print ("")
+        print (" (c) = Cows; (x) = Chickens")
+        print (f" White = not active; {Color.RED}Red = active; {Color.CYAN}Cyan = erased (to be compressed){Color.WHITE}")
+        
+        return
+
+    # Ask the user how many background processes to run doing tending / raising work
+    def getActivityCount(activityType):
+
+        print ("")
+        aCount = input(f" Enter number of parallel {activityType} activities [def = 3]: ")
+        
+        if aCount == "":
+            aCount = 3
+        aCount = int(aCount)
+        
+        return (aCount)            
+
+
+    # Several routines to start up background work
+    def startTCs(aCount, startUp = False):
+    
+        for i in range(aCount):
+            UI.backgroundProcs.append(Process(target = Background.tendCow, args = ()))
+            if startUp:
+                UI.backgroundProcs[-1].start()
+                
+        return
+
+
+    def startRCs(aCount, startUp = False):
+    
+        for i in range(aCount):
+            UI.backgroundProcs.append(Process(target = Background.raiseCow, args = ()))
+            if startUp:
+                UI.backgroundProcs[-1].start()
+                
+        return
+
+
+    def startTXs(aCount, startUp = False):
+                            
+        for i in range(aCount):
+            UI.backgroundProcs.append(Process(target = Background.tendChicken, args = ()))
+            if startUp:
+                UI.backgroundProcs[-1].start()
+                
+        return
+
+
+    def startRXs(aCount, startUp = False):
+                            
+        for i in range(aCount):
+            UI.backgroundProcs.append(Process(target = Background.raiseChicken, args = ()))
+            if startUp:
+                UI.backgroundProcs[-1].start()
+                
+        return
+
+
+    # Get rid of erased animals (the routine is in the gDS .py)
+    def compressAnimals():
+    
+        gAnimal_CompressTableUnderLock()
+
+        return
+        
+        
+    # Add observed values from each farm's total production
+    def updateObserved():
+                
+        # Get animal counts (beware compression!!)
+        gTotalAnimalsObserved[0] = len(gAnimal_RowStatus)
+        
+        # Get total observed counts from all per-farm counts
+        gTotalMilkObserved[0] = 0
+        gTotalEggsObserved[0] = 0
+        
+        for farmRef in range(len(gFarm_RowStatus)):
+            gTotalMilkObserved[0] += gFarm_MilkTotal[farmRef]
+            gTotalEggsObserved[0] += gFarm_EggsTotal[farmRef]
+            
+        return
+
+
+    # Display calculated and observed values
+    def printCalculatedAndObserved():
+    
+        x = Color.RED
+        y = Color.WHITE
+    
+        print ("")
+        print (f" {x}{gTotalAnimalsCalculated[0]}{y} animals calculated; {x}{gTotalAnimalsObserved[0]}{y} animals observed")
+        print (f" {x}{gTotalMilkCalculated[0]}{y} milk production calculated; {x}{gTotalMilkObserved[0]}{y} milk production observed")
+        print (f" {x}{gTotalEggsCalculated[0]}{y} egg production calculated; {x}{gTotalEggsObserved[0]}{y} egg production observed")
+       
+        return
+      
+      
+    # Add "now" animal values to "total" farm values and zero animal values
+    def updateProduction():
+    
+        for (animalRef, animalType) in enumerate(gAnimal_Type):
+            if animalType == "Cow":
+                gFarm_MilkTotal[gAnimal_gFarm_Ref[animalRef]] += gAnimal_Produced[animalRef]
+            elif animalType == "Chicken":
+                gFarm_EggsTotal[gAnimal_gFarm_Ref[animalRef]] += gAnimal_Produced[animalRef]
+            gAnimal_Produced[animalRef] = 0
+            
+        return
+
+    # Do all the necessary to update and verify the calculated / observed values
+    # Check for running background activity BEFORE calling
+    def processDataAndVerifyAll():
+    
+        # MUST update totals (using possible erased animals) BEFORE compressing them away
+        print ("")
+        print (" Process before verification:")
+        print ("")
+        print ("   1) Update 'total' farm production values with 'now' values from both active and erased animals")
+        UI.updateProduction()
+
+        print ("   2) Compress out erased animals")
+        UI.compressAnimals()
+
+        print ("   3) Update observed production counts with new production counts from the farms")
+        UI.updateObserved()
+
+        print ("   4) Verify animal table index (counts then values)")
+
+        indexBad = False
+
+        nameCount = len(gAnimal_Name)
+        indexCount = len(gAnimal_Name2Ref)
+        print ("")
+        print (f" Name count = {Color.RED}{nameCount}{Color.WHITE}; index count = {Color.RED}{indexCount}{Color.WHITE}")
+        if nameCount != indexCount:
+            indexBad = True
+        
+        for animalRef in range(len(gAnimal_RowStatus)):
+            if gAnimal_Name2Ref[gAnimal_Name[animalRef]] != animalRef:
+                indexBad = True
+                
+        if indexBad:
+            print ("")
+            print (f" {Color.CYAN}The index does not match the table!!!{Color.WHITE}")
+            exit(1)
+                
+        UI.printCalculatedAndObserved()
+
+        print ("")
+        print (" Verify totals above!")
+        if gTotalAnimalsCalculated[0] != gTotalAnimalsObserved[0] or \
+           gTotalMilkCalculated[0] != gTotalMilkObserved[0] or \
+           gTotalEggsCalculated[0] != gTotalEggsObserved[0]:
+
+            print ("")
+            print (f" {Color.RED}The counts above don't match!!!{Color.WHITE}")
+            exit (1)
+            
+        print ("")
+        print (f" {Color.CYAN}The counts above match!!!{Color.WHITE}")
+                
+        return
+
+    # Used in many places to ensure we don't step on running background activities
+    def someBackgroundAlive():
+        
+        aliveCount = 0
+        for process in UI.backgroundProcs:
+            if process.is_alive():
+                aliveCount += 1
+        return (aliveCount)
+
+
+    # Process user input
+    def processCommand(command):
+    
+        # Interactive help
+        if command == "help":
+        
+            print (getCodeLines("Help"))
+            input ("Enter <CR> to continue: ")
+
+
+        # Process "start a test run" command
+        elif command == "st":
+        
+            if gMakeTestRun[0] or UI.someBackgroundAlive():
+                print ("")
+                print (f"A test run / some background activities are already in progress - you must stop them first (eb)")
+                time.sleep(3)
+            else:
+
+                # Awkward but understandable
+                UI.tcCount = 0
+                UI.rcCount = 0
+                UI.txCount = 0
+                UI.rxCount = 0
+                
+                gMakeTestRun[0] = True
+                
+                UI.tcCount = UI.getActivityCount("cow-tending")
+                UI.rcCount = UI.getActivityCount("cow-raising")
+                UI.txCount = UI.getActivityCount("chicken-tending")
+                UI.rxCount = UI.getActivityCount("chicken-raising")
+                
+                print ("")
+                aCount = input(" Enter the run time in seconds [def = 45]: ")
+    
+                if aCount == "":
+                    aCount = 45
+                UI.runTime =  int(aCount)
+    
+                print ("")
+                aCount = input(" Enter the cycle time in seconds [def = 15]: ")
+    
+                if aCount == "":
+                    aCount = 15
+                UI.cycleTime =  int(aCount)
+                
+                gRunStopTime[0] = time.time() + UI.runTime
+                
+                UI.startACycle()
+        
+        # Verify all
+        elif command == "va":
+            if gMakeTestRun[0] or UI.someBackgroundAlive():
+                print ("")
+                print ("A test run / some background activities are already in progress - you must stop them first (eb)")
+                time.sleep(3)
+            else:
+                UI.processDataAndVerifyAll()
+                time.sleep(3)
+            
+        # Inject one & two of two errors (note #2 might not trigger a failure on any given attempt)
+        elif command == "e1":
+            gAnimal_Produced[0] += 1
+
+        elif command == "e2":
+            gAnimal_RowStatus[0] = None
+
+        # Set one of two displays
+        elif command == "ad":
+            UI.displayName = "animalDetail"
+            
+        elif command == "fs":
+            UI.displayName = "farmSummary"
+            
+        # Tend cow, tend chicken etc.
+        elif (not gMakeTestRun[0]) and command == "tc":
+        
+            gStopBackgroundProcs[0] = False
+
+            aCount = UI.getActivityCount("cow-tending")
+            UI.tcCount += aCount
+            UI.startTCs(aCount = aCount, startUp = True)
+
+        elif (not gMakeTestRun[0]) and command == "tx":
+        
+            gStopBackgroundProcs[0] = False
+            
+            aCount = UI.getActivityCount("chicken-tending")
+            UI.txCount += aCount
+            UI.startTXs(aCount = aCount, startUp = True)
+
+        elif (not gMakeTestRun[0]) and command == "rc":
+        
+            gStopBackgroundProcs[0] = False
+
+            aCount = UI.getActivityCount("cow-raising")
+            UI.rcCount += aCount
+            UI.startRCs(aCount = aCount, startUp = True)
+
+        elif (not gMakeTestRun[0]) and command == "rx":
+        
+            gStopBackgroundProcs[0] = False
+
+            aCount = UI.getActivityCount("chicken-raising")
+            UI.rxCount += aCount
+            UI.startRXs(aCount = aCount, startUp = True)
+
+        # End any background work going on
+        elif command == "eb":
+        
+            gRunStopTime[0] = 0
+            gCycleStopTime[0] = 0
+            
+            gStopBackgroundProcs[0] = True
+            
+            UI.tcCount = 0
+            UI.rcCount = 0
+            UI.txCount = 0
+            UI.rxCount = 0
+            
+        # Do a few things by hand for interactive users
+        # Update farm production figures from animals' (should use erased animals' data first)
+        elif command == "up":
+        
+            if gMakeTestRun[0] or UI.someBackgroundAlive():
+                print ("")
+                print (f"A test run / some background activities are in progress - you must stop them first (eb)")
+                time.sleep(3)
+            else:
+                UI.updateProduction()
+            
+        # Compress out erased animals rows
+        elif command == "ca":
+        
+            if gMakeTestRun[0] or UI.someBackgroundAlive():
+                print ("")
+                print (f"A test run / some background activities are in progress - you must stop them first (eb)")
+                time.sleep(3)
+            else:
+                UI.compressAnimals()
+            
+        # Dump tables
+        elif command == "dc":
+            gCounty_DumpTable()
+            print ("")
+            input (" Hit Enter to continue: ")
+            
+        elif command == "df":
+            gFarm_DumpTable()
+            print ("")
+            input (" Hit Enter to continue: ")
+            
+        elif command == "da":
+            gAnimal_DumpTable()
+            print ("")
+            input (" Hit Enter to continue: ")
+            
+        else:
+            UI.lastCommand = ""
+            print ("")
+            print (f"Invalid or not currently executable command: '{command}'")
+            time.sleep(2)
+
+        return
+
+
+    # Service the updating of the terminal screen
+    def serviceTerminal():
+    
+        # Figure color of background count (most non-zero values go red here)
+        x = y = Color.WHITE
+        if UI.someBackgroundAlive():
+            x = Color.RED
+
+        # Line 1 of header
+        print ("\033[H\033[J")
+        print (" Uptime in seconds = %d; Background process count = %s%d%s" % \
+              (time.time() - gStartTime[0], x, UI.someBackgroundAlive(), y))
+
+        # Line 2 of header
+        # Figure color of speced background process counts
+        x1 = x2 = x3 = x4 = x5 = x6 = y = Color.WHITE
+        if UI.tcCount:
+            x1 = Color.RED
+        if UI.rcCount:
+            x2 = Color.RED
+        if UI.txCount:
+            x3 = Color.RED
+        if UI.rxCount:
+            x4 = Color.RED
+
+        print (f" Background composition: Tend cow = {x1}{UI.tcCount}{y}; Raise cow = {x2}{UI.rcCount}{y}; Tend chicken = {x3}{UI.txCount}{y}; Raise chicken = {x4}{UI.rxCount}{y}")
+
+        # Line 3 of header
+        x = Color.RED
+        y = Color.WHITE
+        # If running background down in interactive "test run" mode
+        if gMakeTestRun[0] and (gRunStopTime[0] == 0):
+            print (f" {x}Test run rundown{y}")
+        # If interactive
+        elif (not gMakeTestRun[0]) or (gRunStopTime[0] == 0):
+            print (f" {x}Interactive operation{y}")
+        # Must be "test run" mode
+        else:
+            if {int(gCycleStopTime[0] - time.time()) > 0}:
+                x5 = Color.RED
+            if {int(gRunStopTime[0] - time.time()) > 0}:
+                x6 = Color.RED
+            batch = ""
+            if gBatchMode[0]:
+                batch = "Batch mode! "
+            print (f" {x}{batch}Test run{y} time left: {x6}{int(gRunStopTime[0] - time.time())}{y}; Test cycle time left: {x5}{int(gCycleStopTime[0] - time.time())}{y}")
+
+        # So we lock here. A hot lock will hang the display for some amount of time
+        MasterLock("lock")
+
+        # Decide what display to show
+        if UI.displayName == "farmSummary":
+            UI.displayFarmSummary()
+        elif UI.displayName == "animalDetail":
+            UI.displayAnimalDetail()
+            
+        # Print calculated and observed counts and menus if not batch
+        if not gBatchMode[0]:
+        
+            print ("")
+            print (" ======================================")
+            print ("")
+            print (" The 3 lines below are only accurate after ((up) and (ca)) or (va) operations!")
+            #  Update observed now because it's cheap
+            UI.updateObserved()
+            UI.printCalculatedAndObserved()
+            
+            # Update menu
+            print ("")
+            print (" fs / ad = Display farm summary; display animal detail")
+            print (" dc / df / da = Dump counties / farms / animals")
+            print (" st / eb = Start a test run; End all (background/test run) processing")
+            
+            if not gMakeTestRun[0]:
+                print ("")
+                print (" tc / tx / rc / rx = tend cows, chickens / raise cows, chickens")
+                print (" up / ca / va = Update farm production tables; Compress the gAnimal table; Verify all")
+
+            print (" e1 / e2 = Inject errors during a test run")
+            print (" help - Print help on sceen")
+            print ("")
+            print (" ======================================")
+            print ("")
+            print (f" Last command = '{UI.lastCommand}'")
+    
+        # The display is up so stand down
+        MasterLock("unlock")
+        
+        # Handle Batch mode by starting a test run with the pre-stored command line arg values
+        if gBatchMode[0] and (gRunStopTime[0] == 0):
+        
+            gRunStopTime[0] = time.time() + UI.runTime
+            gMakeTestRun[0] = True
+            UI.startACycle()
+            
+        # More time in Batch mode - just sleep 3 seconds per screen update
+        elif gBatchMode[0]:
+        
+            time.sleep(3)
+            
+        # Else, interactive
+        elif not gBatchMode[0]:
+
+            print ("")
+            print (" Type a 2-letter command from the menu above then hit Enter: ")
+
+            # Get any user input
+            i, o, e = select.select([sys.stdin], [], [], 3)
+            
+            # If some input
+            if i:
+            
+                command = sys.stdin.readline().strip()
+                
+                UI.lastCommand = command
+
+                # Process user input
+                UI.processCommand(command)
+
+        return
+        
+
+    # Start / continue cycles
+    def startACycle():
+    
+        # Set so started background tasks can/do run
+        gCycleStopTime[0] = time.time() + UI.cycleTime
+        gStopBackgroundProcs[0] = False
+        UI.backgroundProcs = []
+
+        UI.startTCs(aCount = UI.tcCount, startUp = True)
+        UI.startRCs(aCount = UI.rcCount, startUp = True)
+        UI.startTXs(aCount = UI.txCount, startUp = True)
+        UI.startRXs(aCount = UI.rxCount, startUp = True)
+
+        return
+        
+
+    def getBatchArgs():
+    
+        try:
+            opts, args = getopt.getopt(sys.argv[1:], "h", ["help",
+                                                           "rt=",
+                                                           "ct=",
+                                                           "tc=",
+                                                           "tx=",
+                                                           "rc=",
+                                                           "rx="])
+        except getopt.GetoptError as err:
+            print(err)
+            print (getCodeLines("Help"))
+            sys.exit(2)
+
+        for i in range(0, len(opts)):
+            if opts[i] in ("-h", "--help"):
+                print (getCodeLines("Help"))
+                exit(0)
+
+            elif opts[i][0] == ("--rt"):
+                UI.runTime = int(opts[i][1])
+
+            elif opts[i][0] == ("--ct"):
+                UI.cycleTime = int(opts[i][1])
+
+            elif opts[i][0] == ("--tc"):
+                UI.tcCount = int(opts[i][1])
+
+            elif opts[i][0] == ("--tx"):
+                UI.txCount = int(opts[i][1])
+
+            elif opts[i][0] == ("--rc"):
+                UI.rcCount = int(opts[i][1])
+
+            elif opts[i][0] == ("--rx"):
+                UI.rxCount = int(opts[i][1])
+
+            else:
+                print (getCodeLines("Help"))
+                sys.exit(0)
+
+        return
+
+
+    # Drive a single run from Batch arguments
+    def coreBatchLogic():
+    
+        # Always update the screen until end of run (exits below)
+        while True:
+
+            # While some background activity - run it down
+            while UI.someBackgroundAlive():
+            
+                # Post stop background if in a cycle and time to stop cycle
+                if time.time() > gCycleStopTime[0]:
+                    gStopBackgroundProcs[0] = True
+
+                # Update screen and process any user input (blend screen output for now)
+                UI.serviceTerminal()
+                
+            UI.serviceTerminal()
+
+            # If running test cycles and done running background - it's end of cycle
+            if not UI.someBackgroundAlive():
+
+                UI.processDataAndVerifyAll()
+                time.sleep(3)
+            
+                # If more cycles to run start them else back to interactive or end of batch
+                if time.time() < gRunStopTime[0]:
+                    UI.startACycle()
+                else:
+                    # End of Batch run
+                    print ("")
+                    print (" Done!")
+                    exit (0)
+
+        # End of Batch run processing goes here
+
+
+    # Watch/control what's going on from displays rendered on terminals (only the main terminal in coded for now)
+    def coreInteractiveLogic():
+    
+        # Always update the screen - need a Ctrl-C to exit (the desired "MO" for now)
+        while True:
+
+            # Main service loop
+            # While in interactive mode (not making test run) or while we need to wait for background activities to stop
+            while (not gMakeTestRun[0]) or UI.someBackgroundAlive():
+            
+                # Post stop background if in a cycle and time to stop cycle
+                if gMakeTestRun[0]:
+                    if time.time() > gCycleStopTime[0]:
+                        gStopBackgroundProcs[0] = True
+
+                # Update screen and process any user input
+                UI.serviceTerminal()
+
+            # If running test cycles and done running background - it's end of cycle so...
+            if gMakeTestRun[0] and (not UI.someBackgroundAlive()):
+
+                # Process end-of-cycle and verify
+                UI.processDataAndVerifyAll()
+                time.sleep(3)
+            
+                # If more cycles to run start them else back to interactive or end of batch
+                if time.time() < gRunStopTime[0]:
+                    UI.startACycle()
+                else:
+                    gMakeTestRun[0] = False
+                    UI.tcCount = 0
+                    UI.rcCount = 0
+                    UI.txCount = 0
+                    UI.rxCount = 0
+                    
+        # End of processing goes here (never exits from "while" above)
+
+# Background workers
+class Background:
+
+
+    # Get any animal of the given type with RowStatus = ""
+    def allocateAnAnimal(animalType, rowStatus):
+    
+        animalRef = None
+    
+        while (not gStopBackgroundProcs[0]) and (animalRef is None):
+        
+            time.sleep(0.2)
+
+            MasterLock("lock")
+
+            i = random.randrange(0, len(gAnimal_RowStatus))
+            
+            if (gAnimal_Type[i] == animalType) and (gAnimal_RowStatus[i] == ""):
+                gAnimal_RowStatus[i] = rowStatus
+                animalRef = i
+
+            MasterLock("unlock")
+
+        return (animalRef)
+
+        
+    # Milk the cow...
+    def tendCow():
+    
+        while not gStopBackgroundProcs[0]:
+
+            animalRef = Background.allocateAnAnimal("Cow", "Tending")
+            
+            if animalRef is not None:
+            
+                j = int(random.uniform(20.0, 40.0))
+                gAnimal_Produced[animalRef] += j
+                
+                MasterLock("lock")
+                gTotalMilkCalculated[0] += j
+                MasterLock("unlock")
+                
+                time.sleep(3)
+
+                gAnimal_RowStatus[animalRef] = ""
+
+            time.sleep(1)
+            
+        return
+
+
+    # Create / erase a cow (net ~70/30)
+    def raiseCow():
+    
+        while not gStopBackgroundProcs[0]:
+        
+            animalRef = Background.allocateAnAnimal("Cow", "Raising")
+            
+            if animalRef is not None:
+            
+                # If to create a cow
+                if random.randrange(0, 10) > 3:
+                    gAnimal_AddARowUnderLock(_Type = "Cow", _Name = f"Cow #{time.time()}", \
+                                             _gFarm_Ref = gAnimal_gFarm_Ref[animalRef], _RowStatus = "")
+                    time.sleep(3)
+                    gAnimal_RowStatus[animalRef] = ""
+                    j = +1
+                else:
+                    gAnimal_RowStatus[animalRef] = None
+                    j = -1
+                    
+                MasterLock("lock")
+                gTotalAnimalsCalculated[0] += j
+                MasterLock("unlock")
+
+            time.sleep(1)
+            
+        return
+
+
+    # Gather chicken eggs
+    def tendChicken():
+    
+        while not gStopBackgroundProcs[0]:
+        
+            animalRef = Background.allocateAnAnimal("Chicken", "Tending")
+            
+            if animalRef is not None:
+            
+                j = int(random.uniform(1.0, 2.0))
+                gAnimal_Produced[animalRef] += j
+                
+                MasterLock("lock")
+                gTotalEggsCalculated[0] += j
+                MasterLock("unlock")
+                
+                time.sleep(3)
+
+                gAnimal_RowStatus[animalRef] = ""
+
+            time.sleep(1)
+            
+        return
+
+
+    # Create / erase a chicken (net ~70/30)
+    def raiseChicken():
+    
+        while not gStopBackgroundProcs[0]:
+        
+            animalRef = Background.allocateAnAnimal("Chicken", "Raising")
+            
+            if animalRef is not None:
+            
+                # If to create a chicken
+                if random.randrange(0, 10) > 3:
+                    gAnimal_AddARowUnderLock(_Type = "Chicken", _Name = f"Chicken #{time.time()}", \
+                                             _gFarm_Ref = gAnimal_gFarm_Ref[animalRef], _RowStatus = "")
+                    time.sleep(3)
+                    gAnimal_RowStatus[animalRef] = ""
+                    j = +1
+                else:
+                    gAnimal_RowStatus[animalRef] = None
+                    j = -1
+
+                MasterLock("lock")
+                gTotalAnimalsCalculated[0] += j
+                MasterLock("unlock")
+
+            time.sleep(1)
+            
+        return
+        
+        
+#
+# Routine to handle in-line documentation/text (text in this source file
+#     can be extracted at run time and used for help or templates)
+#
+def getCodeLines(tag, substitutionList = []):
+
+    lineRef = 0
+    harvestingText = False
+    harvestedText = ''
+    
+    while lineRef <= len(CodeLines):
+    
+        line = CodeLines[lineRef]
+        lineRef += 1
+
+        if (not harvestingText) and ('""" - ' in line):
+            indent = line.find('"""')
+            line = line[indent:]
+            line = line.replace('""" - ', "")
+            if line == tag:
+                harvestingText = True
+                
+        elif (not harvestingText) and (lineRef == len(CodeLines)):
+            print ("Can not find in-line text tag '%s'" % (tag))
+            x = 1/0
+
+        elif harvestingText and ('"""' in line):
+            return (harvestedText % (substitutionList))
+            
+        elif harvestingText:
+            harvestedText += line[indent:] + "\n"
+
+
+if __name__ == "__main__":
+
+    # Load in this program's code for in-line text processing
+    CodeLines = open(sys.argv[0], "r").read().splitlines()
+    
+    # Handle batch mode
+    gBatchMode[0] = False
+    if len(sys.argv) > 1:
+        UI.getBatchArgs()
+        gBatchMode[0] = True
+
+    # Start with this display on the screen
+    displayName = "farmSummary"
+    
+    print ("")
+    print ("Create some data to work with in random order over the next 10 seconds or so...")
+    print ("")
+    time.sleep(1)
+    
+    # Set up the global DB for subsequent operations
+    UI.setUp()
+    
+    # Make a major decision on what code to execute based on interactive or Batch mode 
+    print ("")
+    if gBatchMode[0]:
+        print ("Start one batch run")
+        time.sleep(2)
+        UI.coreBatchLogic()
+    else:
+        print ("Start screen refresh / interactive command input mode...")
+        # Start the endless cycle running
+        time.sleep(2)
+        UI.coreInteractiveLogic()
+        
+    # No return from either branch above!!
+
+
+""" - Help
+
+####################
+#
+# animalFarm_02 - Help
+#
+####################
+#
+animalFarm_02 (this file) is a part of the "gDS" capability / GitHub repo. gDS provides a very light-weight "data store" 
+feature to Python programs. See the repo README for more on gDS. This -help- covers how this example program works.
+
+
+For more background see: "https://www.linkedin.com/pulse/testing-complex-systems-thomas-alborough"
+
+
+This program serves 2 purposes (as described in LinkedIn article):
+
+    -- It demonstraits a use of gDS.
+    
+    -- It demonstraits one way to provide an "interactive test platform".
+
+
+animalFarm_02 starts by populating a gDS data store first with farms then animals in the farms (cows and chickens). The 
+user can then start independent background processes that "tend" and "raise" the animals:
+
+    -- "tend" - The animals are looked after (cows milked; chickens have their eggs gathered).
+    
+    -- "raise" - New animals are cloned from existing animals or existing animals are "sent to market" (their data store 
+       rows "erased").
+
+       
+The test run executes for a certain amount of time (run time) and it stops and reconciles (checks the data) every so many 
+seconds (cycle time). Both times are user specified.
+
+
+The milk and eggs are gathered and tracked (two ways) and if the two counts don't match at the end of a cycle, the 
+program exits with an error. The animal count and production values are tracked as:
+
+    -- Calculated - An overall totalizer is adjusted each time the item is created or deleted by a background activities.
+    
+    -- Observed -- The amounts are calculated from separate farm totalizer values.
+
+
+animalFarm_02 runs in one of 2 operating modes:
+
+    -- Interactively - Here the user has a menu that gives them full control over what the program does. The display 
+       is updated every 3 seconds.
+       
+            -- In interactive mode a menu allows the user to start and stop individual activities OR ...
+            
+            -- make a "test run" where the specified activities are run over and over (cycles) for a given total
+               time (run time).
+       
+    -- Command line - Here command line args trigger batch mode operation and specify a single run of the code. 
+       For now the screen is updated every 3 seconds in batch mode just so the user can keep an eye on it, but the user has 
+       no control over the run once the run starts.
+
+       
+The various menu items (interactive as menu selections / batch as Batch arguments (**) "--xx=nn") are:
+
+    fs / ad - Set farm summary / animal detail displays
+
+    rt - Set total run time in seconds (**)
+    
+    ct - Set the cycle time in seconds (**)
+    
+    tc, tx, rc, rx - tend / raise animal background process count (**)
+    
+    up - As the simulation run *animals* collect milk and eggs. When the background processes are stopped, the "up" 
+         command add the *animal* production values to the *farm* totals and then the animals values get zeroed (this 
+         allows "erased" animals to then be compressed out).
+         
+    ca - This compresses out any erased animals.
+    
+    va - This does the above 2 operations and then verifies the "calculated" and "observed" values match (see above).
+
+    st - Start a test run (like batch but the screen and input stays "live").
+    
+    eb - End all background processes
+    
+    e1 / e2 - Inject two kinds of errors to trip up verification
+
+"""
