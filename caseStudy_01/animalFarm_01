@@ -119,11 +119,9 @@ if __name__ == "__main__":
     gAnimal_DumpTable()
 
     print ("")
-    print ("Print information about chickens in County B")
+    input ("Hit Enter to print information about chickens in County B: ")
     print ("")
-    
-    input ("Hit Enter to continue: ")
-    
+ 
     # Note - all activity is over - iterate on any column
     # Criteria to print by
     animalTypeToPrint = "Chicken"
