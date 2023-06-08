@@ -670,13 +670,13 @@ class UI:
             print ("")
             print (" fs / ad = Display farm summary; display animal detail")
             print (" dc / df / da = Dump counties / farms / animals")
-            print (" st / eb = Start a test run; End all (background/test run) processing")
             
             if not gMakeTestRun[0]:
                 print ("")
                 print (" tc / tx / rc / rx = tend cows, chickens / raise cows, chickens")
                 print (" up / ca / va = Update farm production tables; Compress the gAnimal table; Verify all")
 
+            print (" st / eb = Start a test run; End all (background/test run) processing")
             print (" e1 / e2 = Inject errors during a test run")
             print (" help - Print help on screen")
             print ("")
