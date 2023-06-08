@@ -357,7 +357,7 @@ class UI:
         return
       
       
-    # Add "now" animal values to "total" farm values and zero animal values
+    # Add "new" animal values to "total" farm values and zero animal values
     def updateProduction():
     
         for (animalRef, animalType) in enumerate(gAnimal_Type):
@@ -377,7 +377,7 @@ class UI:
         print ("")
         print (" Process before verification:")
         print ("")
-        print ("   1) Update 'total' farm production values with 'now' values from both active and erased animals")
+        print ("   1) Update 'total' farm production values with 'new' values from both active and erased animals")
         UI.updateProduction()
 
         print ("   2) Compress out erased animals")
@@ -678,7 +678,7 @@ class UI:
                 print (" up / ca / va = Update farm production tables; Compress the gAnimal table; Verify all")
 
             print (" e1 / e2 = Inject errors during a test run")
-            print (" help - Print help on sceen")
+            print (" help - Print help on screen")
             print ("")
             print (" ======================================")
             print ("")
@@ -703,7 +703,7 @@ class UI:
         elif not gBatchMode[0]:
 
             print ("")
-            print (" Type a 2-letter command from the menu above then hit Enter: ")
+            print (" Type a command from the menu above then hit Enter: ")
 
             # Get any user input
             i, o, e = select.select([sys.stdin], [], [], 3)
