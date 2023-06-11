@@ -14,7 +14,7 @@ import sys
     
     -- Have / deploy (3) Linux "test hosts" to run nfs on.
 
-    -- Have / deploy (1) Linux "test platform" to clone "nfsTest" on.
+    -- Have / deploy (1) Linux "test platform" to run "nfsTest" on.
     
     -- The IP addresses of each of the (4) hosts must be "ping-able" by all the other hosts.
        (A verification procedure runs automatically at startup time to make sure this is true).

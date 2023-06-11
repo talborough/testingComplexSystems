@@ -25,7 +25,7 @@ defineUnary     gTotalAnimalsObserved   0
 #
 defineTable     gCounty                 MasterLock              # Table definition
 defineColumn    gCounty_Name            None                    # The county name
-defineIndex     gCounty_Name2Ref                                # A dictionary to look up county index by name
+defineIndex     gCounty_Name2Ref                                # A dictionary to look up a county ref by name
 defineColumn    gCounty_RowStatus                               # For locking row
 endTable
 #
