@@ -3,7 +3,7 @@
 #
 # To generate the Python code:
 #
-#       ./gDSCodeGen animalFarm_01    >>>>>>> Produces animalFarm_01.py
+#       ../gDS/gDSCodeGen animalFarm_01    >>>>>>> Produces animalFarm_01.py in the directory created by the repo.
 #
 # gFarm - The farms
 #

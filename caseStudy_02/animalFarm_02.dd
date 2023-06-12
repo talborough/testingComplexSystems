@@ -3,7 +3,7 @@
 #
 # To generate code:
 #
-#       ./gDSCodeGen animalFarm_02
+#       ../gDS/gDSCodeGen animalFarm_02    >>>>>>> Produces animalFarm_02.py in the directory created by the repo.
 #
 # Global flags/counters
 #

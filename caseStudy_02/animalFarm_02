@@ -16,7 +16,7 @@
 #
 # Consume the gDS definition file animalFarm_02.py (you must first use gDSCodeGen on animalFarm_02.dd):
 #
-#       ./gDSCodeGen animalFarm_02             >>>>>> Produces animalFarm_02.py
+#       ../gDS/gDSCodeGen animalFarm_02             >>>>>> Produces animalFarm_02.py
 #
 exec (open('animalFarm_02.py').read())
 

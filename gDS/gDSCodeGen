@@ -3,20 +3,21 @@
 #
 # gDS code generator - See the README to start.
 #
-# This starts by scanning the input file overand over again (in "passes"), looking for invalid syntax and symantics.
+# This starts by scanning the input file over and over again (in "passes"), looking for invalid syntax and symantics.
 # By the time the passes are done the input file has been "validated" and the code generators can work with impunity.
 #
 
 #
-# The basics that we are verifying:
+# The basics of what we are verifying - see website for a bit more detail:
 #
-# defineTable:        TableA
-# defineColumn:       TableA_ColumnA - One split on "_"
-# defineReference:    TableA_TableB_Ref - 2 splits and ends with "_Ref"
-# defineIndex:        TableA_ColumnA2Ref - 1 split and ends with "2Ref"
-# defineUnary:        Unary
+# defineTable         TableA <optional lock routine>
+# defineColumn        TableA_ColumnA - One split on "_" <optional initial value>
+# defineColumn        TableA_TableB_Ref - 2 splits and ends with "_Ref" <optional initial value>
+# defineIndex         TableA_ColumnA2Ref - 1 split and ends with "2Ref"
+# endTable
+# defineUnary         Unary <required initial value)>
 # defeineLlist        ListA
-# defineDict:         DictA
+# defineDict          DictA
 
 import os
 import sys
