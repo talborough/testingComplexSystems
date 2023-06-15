@@ -94,7 +94,7 @@ class UI:
         # A local routine, called many times, to make one animal on the given farm
         def makeAnAnimal(farmRef, animalNumber, animalType):
 
-            # This gets all executors running at random times over a 2 to 4 second interval
+            # This gets all executors running at random times over a 2 second interval
             time.sleep(random.uniform(2.0, 4.0))
     
             # The makes a row atomically
@@ -102,7 +102,7 @@ class UI:
                                                    _Type = animalType, _RowStatus = "")
             print (f"Added {gAnimal_Name[animalRef]} to {gFarm_Name[farmRef]} in {gCounty_Name[gFarm_gCounty_Ref[farmRef]]}")
             
-            # Let's track this number atomically
+            # Let's track this number atomically (the above and this could all be done under 1 lock)
             MasterLock("lock")
             gTotalAnimalsCalculated[0] += 1
             MasterLock("unlock")

@@ -4,7 +4,8 @@ import sys
 
 """ - Help
 
-    This code implements "Case Study 3" cited by the https://TestingComplexSystems.com web site.
+    This is a placeholder for "Case Study 3" cited by the https://TestingComplexSystems.com
+    web site.
     
     This code forms a comprehensive "test platform" that stands up and runs a number of
     "nfs" server and client instances through their paces on (3) Linux test hosts.
@@ -16,15 +17,18 @@ import sys
 
     -- Have / deploy (1) Linux "test platform" to run "nfsTest" on.
     
+    -- All (4) hosts must have the same root login with the same password. This 
+       eliminates the need for ssh keys. Note that their credentials will be exposed
+       by this code.
+
     -- The IP addresses of each of the (4) hosts must be "ping-able" by all the other hosts.
        (A verification procedure runs automatically at startup time to make sure this is true).
     
-    -- Each of the (4) hosts must have a login with root privileges (Their credentials will be
-       exposed by this code).
-    
-    Run "nfsTest" on the test platform. It will check for and install any needed code and help
-    you create any needed configuration files. See the website cited above and the code below
-    for more information.
+    Run "nfsTest" on the test platform. It will check for and install any needed code and help 
+    you create any needed configuration files. The initial install of ssh on the test hosts 
+    will need to be done by hand however but nfsTest will describe how to do that. 
+
+    See the website cited above and the code below for more information.
     
 """
 
