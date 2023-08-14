@@ -5,6 +5,16 @@
 #
 #       ../gDS/gDSCodeGen animalFarm_01    >>>>>>> Produces animalFarm_01.py in the directory created by the repo.
 #
+# gCounty - The county a farm is in
+#
+# Keyword       Item name               Default column value if cited
+# =======       =========               =============================
+defineTable     gCounty                                         # Table definition
+defineColumn    gCounty_Name                                    # The county's name
+defineIndex     gCounty_Name2Ref                                # A dictionary to look up county index by name
+defineColumn    gCounty_RowStatus       None                    # For concurrency control but - not used
+endTable
+#
 # gFarm - The farms
 #
 # Keyword       Item name               Default column value if cited
@@ -15,28 +25,20 @@ defineColumn    gFarm_gCounty_Ref       None                    # The county a f
 defineColumn    gFarm_RowStatus         None                    # For concurrency control but - not used
 endTable
 #
-# gCounty - The county a farm is in
-#
-defineTable     gCounty                 MasterLock              # Table definition
-defineColumn    gCounty_Name                                    # The county's name
-defineIndex     gCounty_Name2Ref                                # A dictionary to look up county index by name
-defineColumn    gCounty_RowStatus       None                    # For concurrency control but - not used
-endTable
-#
 # gAnimal - The animals on a farm
 #
-# Keyword       Item name               Row lock routine if cited
-# =======       =========               =========================
-defineTable     gAnimal                 MasterLock              # Table definition / row lock
+# Keyword       Item name                                         
+# =======       =========                                        
+defineTable     gAnimal                                         # Table definition
 defineColumn    gAnimal_gFarm_Ref                               # The farm owning the animal
 defineColumn    gAnimal_Type                                    # The kind of animal
 defineColumn    gAnimal_Name                                    # The animal's name
-defineColumn    gAnimal_RowStatus       None                    # This table uses concurrency control
+defineColumn    gAnimal_RowStatus       None                    # For concurrency control but - not used
 endTable
 
 #
 # Examples
 #
-defineUnary     xxx                     None                    # A single value
-defineList      yyy                                             # A random list
-defineDict      zzz                                             # A random distionary
+defineUnary     example_01              None                    # A single value
+defineList      example_02                                      # A random empty list
+defineDict      example_03                                      # A random empty dictionary

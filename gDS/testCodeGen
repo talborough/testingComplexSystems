@@ -102,7 +102,8 @@ def runOneTest(dataTag):
 #
 
 print ("")
-print ("If the error output looks a little mysterious run './gDSCodeGen testFile' directly")
+print ("If the error output looks a little mysterious run './gDSCodeGen animalFarm_02' or")
+print ("'./gDSCodeGen testFile' directly")
 
 #
 # Load in this program's code for in-line text extraction
@@ -595,6 +596,32 @@ print ("")
 from multiprocessing import Manager
 gDSMgr = Manager()
 
+#
+# Define global shared variables for entity gCounty
+#
+gCounty_Name = gDSMgr.list()
+gCounty_Name2Ref = gDSMgr.dict()
+gCounty_RowStatus = gDSMgr.list()
+
+#
+# Define global shared variables for entity gFarm
+#
+gFarm_Name = gDSMgr.list()
+gFarm_gCounty_Ref = gDSMgr.list()
+gFarm_MilkTotal = gDSMgr.list()
+gFarm_EggsTotal = gDSMgr.list()
+gFarm_RowStatus = gDSMgr.list()
+
+#
+# Define global shared variables for entity gAnimal
+#
+gAnimal_gFarm_Ref = gDSMgr.list()
+gAnimal_Type = gDSMgr.list()
+gAnimal_Name = gDSMgr.list()
+gAnimal_Produced = gDSMgr.list()
+gAnimal_Name2Ref = gDSMgr.dict()
+gAnimal_RowStatus = gDSMgr.list()
+
 gStartTime = gDSMgr.list()
 gStartTime.append(0)
 
@@ -632,40 +659,12 @@ gTotalAnimalsObserved = gDSMgr.list()
 gTotalAnimalsObserved.append(0)
 
 #
-# Define global shared variables for entity gCounty
+# Add a row to table gCounty
 #
-gCounty_Name = gDSMgr.list()
-gCounty_Name2Ref = gDSMgr.dict()
-gCounty_RowStatus = gDSMgr.list()
-
-#
-# Define global shared variables for entity gFarm
-#
-gFarm_Name = gDSMgr.list()
-gFarm_gCounty_Ref = gDSMgr.list()
-gFarm_MilkTotal = gDSMgr.list()
-gFarm_EggsTotal = gDSMgr.list()
-gFarm_RowStatus = gDSMgr.list()
-
-#
-# Define global shared variables for entity gAnimal
-#
-gAnimal_gFarm_Ref = gDSMgr.list()
-gAnimal_Type = gDSMgr.list()
-gAnimal_Name = gDSMgr.list()
-gAnimal_Produced = gDSMgr.list()
-gAnimal_Name2Ref = gDSMgr.dict()
-gAnimal_RowStatus = gDSMgr.list()
-
-#
-# Add a row to table gCounty (using locker = MasterLock)
-#
-def gCounty_AddARowUnderLock(\
+def gCounty_AddARow(\
     _RowStatus,\
     _Name = None,\
 ):
-
-    MasterLock('lock')
 
     gCounty_Name.append(_Name)
     gCounty_RowStatus.append(_RowStatus)
@@ -678,22 +677,18 @@ def gCounty_AddARowUnderLock(\
         x = 1/0 # Dup key add attempt (above) to index gCounty_Name2Ref
     gCounty_Name2Ref[gCounty_Name[thisRef]] = thisRef
 
-    MasterLock('unlock')
-
     return (thisRef)
 
 #
-# Add a row to table gFarm (using locker = MasterLock)
+# Add a row to table gFarm
 #
-def gFarm_AddARowUnderLock(\
+def gFarm_AddARow(\
     _gCounty_Ref,\
     _RowStatus,\
     _Name = None,\
     _MilkTotal = 0,\
     _EggsTotal = 0,\
 ):
-
-    MasterLock('lock')
 
     gFarm_Name.append(_Name)
     gFarm_gCounty_Ref.append(_gCounty_Ref)
@@ -702,22 +697,18 @@ def gFarm_AddARowUnderLock(\
     gFarm_RowStatus.append(_RowStatus)
     thisRef = len(gFarm_RowStatus) - 1
 
-    MasterLock('unlock')
-
     return (thisRef)
 
 #
-# Add a row to table gAnimal (using locker = MasterLock)
+# Add a row to table gAnimal
 #
-def gAnimal_AddARowUnderLock(\
+def gAnimal_AddARow(\
     _gFarm_Ref,\
     _Type,\
     _RowStatus,\
     _Name = None,\
     _Produced = 0,\
 ):
-
-    MasterLock('lock')
 
     gAnimal_gFarm_Ref.append(_gFarm_Ref)
     gAnimal_Type.append(_Type)
@@ -733,52 +724,43 @@ def gAnimal_AddARowUnderLock(\
         x = 1/0 # Dup key add attempt (above) to index gAnimal_Name2Ref
     gAnimal_Name2Ref[gAnimal_Name[thisRef]] = thisRef
 
-    MasterLock('unlock')
-
     return (thisRef)
 
 #
-# Delete erased rows in table gCounty (using locker = MasterLock)
+# Delete erased rows in table gCounty
 # Note - this procedure must be written as is because of Python/multiprocessing behavior!
 #
-def gCounty_CompressTableUnderLock():
-
-    MasterLock('lock')
+def gCounty_DeleteTableRows(rowStatusValueToDelete = '!All!'):
 
     _Name = []
     _RowStatus = []
 
-    for tableRef in range(len(gCounty_RowStatus)):
-        if gCounty_RowStatus[tableRef] is None:
+    for rowRef in range(len(gCounty_RowStatus)):
+        if (rowStatusValueToDelete == '!All!') or (gCounty_RowStatus[rowRef] == rowStatusValueToDelete):
             pass
-            del gCounty_Name2Ref[gCounty_Name[tableRef]]
+            del gCounty_Name2Ref[gCounty_Name[rowRef]]
         else:
             pass
-            _Name.append(gCounty_Name[tableRef])
-            _RowStatus.append(gCounty_RowStatus[tableRef])
+            _Name.append(gCounty_Name[rowRef])
+            _RowStatus.append(gCounty_RowStatus[rowRef])
 
     del gCounty_Name[:]
     del gCounty_RowStatus[:]
 
-    for tableRef in range(len(_RowStatus)):
-        gCounty_Name.append(_Name[tableRef])
-        gCounty_RowStatus.append(_RowStatus[tableRef])
+    for rowRef in range(len(_RowStatus)):
+        gCounty_Name.append(_Name[rowRef])
+        gCounty_RowStatus.append(_RowStatus[rowRef])
 
+    for rowRef in range(len(_RowStatus)):
+        gCounty_Name2Ref[gCounty_Name[rowRef]] = rowRef
 
-    for tableRef in range(len(_RowStatus)):
-        gCounty_Name2Ref[gCounty_Name[tableRef]] = tableRef
-
-    MasterLock('unlock')
-
-    return
+    return (len(gCounty_RowStatus))
 
 #
-# Delete erased rows in table gFarm (using locker = MasterLock)
+# Delete erased rows in table gFarm
 # Note - this procedure must be written as is because of Python/multiprocessing behavior!
 #
-def gFarm_CompressTableUnderLock():
-
-    MasterLock('lock')
+def gFarm_DeleteTableRows(rowStatusValueToDelete = '!All!'):
 
     _Name = []
     _gCounty_Ref = []
@@ -786,16 +768,16 @@ def gFarm_CompressTableUnderLock():
     _EggsTotal = []
     _RowStatus = []
 
-    for tableRef in range(len(gFarm_RowStatus)):
-        if gFarm_RowStatus[tableRef] is None:
+    for rowRef in range(len(gFarm_RowStatus)):
+        if (rowStatusValueToDelete == '!All!') or (gFarm_RowStatus[rowRef] == rowStatusValueToDelete):
             pass
         else:
             pass
-            _Name.append(gFarm_Name[tableRef])
-            _gCounty_Ref.append(gFarm_gCounty_Ref[tableRef])
-            _MilkTotal.append(gFarm_MilkTotal[tableRef])
-            _EggsTotal.append(gFarm_EggsTotal[tableRef])
-            _RowStatus.append(gFarm_RowStatus[tableRef])
+            _Name.append(gFarm_Name[rowRef])
+            _gCounty_Ref.append(gFarm_gCounty_Ref[rowRef])
+            _MilkTotal.append(gFarm_MilkTotal[rowRef])
+            _EggsTotal.append(gFarm_EggsTotal[rowRef])
+            _RowStatus.append(gFarm_RowStatus[rowRef])
 
     del gFarm_Name[:]
     del gFarm_gCounty_Ref[:]
@@ -803,24 +785,20 @@ def gFarm_CompressTableUnderLock():
     del gFarm_EggsTotal[:]
     del gFarm_RowStatus[:]
 
-    for tableRef in range(len(_RowStatus)):
-        gFarm_Name.append(_Name[tableRef])
-        gFarm_gCounty_Ref.append(_gCounty_Ref[tableRef])
-        gFarm_MilkTotal.append(_MilkTotal[tableRef])
-        gFarm_EggsTotal.append(_EggsTotal[tableRef])
-        gFarm_RowStatus.append(_RowStatus[tableRef])
+    for rowRef in range(len(_RowStatus)):
+        gFarm_Name.append(_Name[rowRef])
+        gFarm_gCounty_Ref.append(_gCounty_Ref[rowRef])
+        gFarm_MilkTotal.append(_MilkTotal[rowRef])
+        gFarm_EggsTotal.append(_EggsTotal[rowRef])
+        gFarm_RowStatus.append(_RowStatus[rowRef])
 
-    MasterLock('unlock')
-
-    return
+    return (len(gFarm_RowStatus))
 
 #
-# Delete erased rows in table gAnimal (using locker = MasterLock)
+# Delete erased rows in table gAnimal
 # Note - this procedure must be written as is because of Python/multiprocessing behavior!
 #
-def gAnimal_CompressTableUnderLock():
-
-    MasterLock('lock')
+def gAnimal_DeleteTableRows(rowStatusValueToDelete = '!All!'):
 
     _gFarm_Ref = []
     _Type = []
@@ -828,17 +806,17 @@ def gAnimal_CompressTableUnderLock():
     _Produced = []
     _RowStatus = []
 
-    for tableRef in range(len(gAnimal_RowStatus)):
-        if gAnimal_RowStatus[tableRef] is None:
+    for rowRef in range(len(gAnimal_RowStatus)):
+        if (rowStatusValueToDelete == '!All!') or (gAnimal_RowStatus[rowRef] == rowStatusValueToDelete):
             pass
-            del gAnimal_Name2Ref[gAnimal_Name[tableRef]]
+            del gAnimal_Name2Ref[gAnimal_Name[rowRef]]
         else:
             pass
-            _gFarm_Ref.append(gAnimal_gFarm_Ref[tableRef])
-            _Type.append(gAnimal_Type[tableRef])
-            _Name.append(gAnimal_Name[tableRef])
-            _Produced.append(gAnimal_Produced[tableRef])
-            _RowStatus.append(gAnimal_RowStatus[tableRef])
+            _gFarm_Ref.append(gAnimal_gFarm_Ref[rowRef])
+            _Type.append(gAnimal_Type[rowRef])
+            _Name.append(gAnimal_Name[rowRef])
+            _Produced.append(gAnimal_Produced[rowRef])
+            _RowStatus.append(gAnimal_RowStatus[rowRef])
 
     del gAnimal_gFarm_Ref[:]
     del gAnimal_Type[:]
@@ -846,31 +824,26 @@ def gAnimal_CompressTableUnderLock():
     del gAnimal_Produced[:]
     del gAnimal_RowStatus[:]
 
-    for tableRef in range(len(_RowStatus)):
-        gAnimal_gFarm_Ref.append(_gFarm_Ref[tableRef])
-        gAnimal_Type.append(_Type[tableRef])
-        gAnimal_Name.append(_Name[tableRef])
-        gAnimal_Produced.append(_Produced[tableRef])
-        gAnimal_RowStatus.append(_RowStatus[tableRef])
+    for rowRef in range(len(_RowStatus)):
+        gAnimal_gFarm_Ref.append(_gFarm_Ref[rowRef])
+        gAnimal_Type.append(_Type[rowRef])
+        gAnimal_Name.append(_Name[rowRef])
+        gAnimal_Produced.append(_Produced[rowRef])
+        gAnimal_RowStatus.append(_RowStatus[rowRef])
 
+    for rowRef in range(len(_RowStatus)):
+        gAnimal_Name2Ref[gAnimal_Name[rowRef]] = rowRef
 
-    for tableRef in range(len(_RowStatus)):
-        gAnimal_Name2Ref[gAnimal_Name[tableRef]] = tableRef
-
-    MasterLock('unlock')
-
-    return
+    return (len(gAnimal_RowStatus))
 
 #
-# Print values out for table 'gCounty' (using locker = MasterLock)
+# Print values out for table 'gCounty'
 #
 def gCounty_DumpTable(rangeListToDump = None):
 
-    MasterLock('lock')
-
     print (f'**************')
     print (f'**************')
-    print ('    Table %24s (using locker = MasterLock) has %d entries' % ('gCounty', len(gCounty_RowStatus)))
+    print ('    Table %24s has %d entries' % ('gCounty', len(gCounty_RowStatus)))
     print (f'**************')
     print (f'**************')
     print (f'')
@@ -881,20 +854,16 @@ def gCounty_DumpTable(rangeListToDump = None):
             print ('    %30s = %10s' % ('gCounty_Name', gCounty_Name[i]))
             print ('    %30s = %10s' % ('gCounty_RowStatus', gCounty_RowStatus[i]))
 
-    MasterLock('unlock')
-
     return
 
 #
-# Print values out for table 'gFarm' (using locker = MasterLock)
+# Print values out for table 'gFarm'
 #
 def gFarm_DumpTable(rangeListToDump = None):
 
-    MasterLock('lock')
-
     print (f'**************')
     print (f'**************')
-    print ('    Table %24s (using locker = MasterLock) has %d entries' % ('gFarm', len(gFarm_RowStatus)))
+    print ('    Table %24s has %d entries' % ('gFarm', len(gFarm_RowStatus)))
     print (f'**************')
     print (f'**************')
     print (f'')
@@ -908,20 +877,16 @@ def gFarm_DumpTable(rangeListToDump = None):
             print ('    %30s = %10s' % ('gFarm_EggsTotal', gFarm_EggsTotal[i]))
             print ('    %30s = %10s' % ('gFarm_RowStatus', gFarm_RowStatus[i]))
 
-    MasterLock('unlock')
-
     return
 
 #
-# Print values out for table 'gAnimal' (using locker = MasterLock)
+# Print values out for table 'gAnimal'
 #
 def gAnimal_DumpTable(rangeListToDump = None):
 
-    MasterLock('lock')
-
     print (f'**************')
     print (f'**************')
-    print ('    Table %24s (using locker = MasterLock) has %d entries' % ('gAnimal', len(gAnimal_RowStatus)))
+    print ('    Table %24s has %d entries' % ('gAnimal', len(gAnimal_RowStatus)))
     print (f'**************')
     print (f'**************')
     print (f'')
@@ -935,7 +900,5 @@ def gAnimal_DumpTable(rangeListToDump = None):
             print ('    %30s = %10s' % ('gAnimal_Produced', gAnimal_Produced[i]))
             print ('    %30s = %10s' % ('gAnimal_RowStatus', gAnimal_RowStatus[i]))
 
-    MasterLock('unlock')
-
     return
-t"""
+"""

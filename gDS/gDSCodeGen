@@ -10,13 +10,13 @@
 #
 # The basics of what we are verifying - see website for a bit more detail:
 #
-# defineTable         TableA <optional lock routine>
-# defineColumn        TableA_ColumnA - One split on "_" <optional initial value>
-# defineColumn        TableA_TableB_Ref - 2 splits and ends with "_Ref" <optional initial value>
+# defineTable         TableA
+# defineColumn        TableA_ColumnA - One split on "_" <optional initial column value>
+# defineColumn        TableA_TableB_Ref - 2 splits and ends with "_Ref" <optional initial column value>
 # defineIndex         TableA_ColumnA2Ref - 1 split and ends with "2Ref"
 # endTable
 # defineUnary         Unary <required initial value)>
-# defeineLlist        ListA
+# defeineList         ListA
 # defineDict          DictA
 
 import os
@@ -572,7 +572,6 @@ def generateRowAddCode():
     lineIndex = 0
     
     currentTableName = None
-    currentLockerName = None
     
     currentTableStartLine = None
     
@@ -585,32 +584,18 @@ def generateRowAddCode():
             if primaryKeyword == "defineTable":
             
                 currentTableName = elementName
-                currentLockerName = initialValue
                 
                 currentTableStartLine = lineIndex
 
-                # Save current locker name (or None)
-                currentLockerName = initialValue
-                
                 # Init last column name used for calculating table length
                 lastColumnName = None
                 
-                # Generate one of two headers based on having a locker or not
-                if currentLockerName is None:
-                   
-                    GeneratedCode += f"\n"
-                    GeneratedCode += f"#\n"
-                    GeneratedCode += f"# Add a row to table {elementName} WITHOUT a lock\n"
-                    GeneratedCode += f"#\n"
-                    GeneratedCode += f"def {currentTableName}_AddARow(\\\n"
-                    
-                else:
-                
-                    GeneratedCode += f"\n"
-                    GeneratedCode += f"#\n"
-                    GeneratedCode += f"# Add a row to table {elementName} (using locker = {currentLockerName})\n"
-                    GeneratedCode += f"#\n"
-                    GeneratedCode += f"def {currentTableName}_AddARowUnderLock(\\\n"
+                # Generate header
+                GeneratedCode += f"\n"
+                GeneratedCode += f"#\n"
+                GeneratedCode += f"# Add a row to table {elementName}\n"
+                GeneratedCode += f"#\n"
+                GeneratedCode += f"def {currentTableName}_AddARow(\\\n"
                     
                 # Re-scan this table's definition generating required then optional dummy arguments
                 addRequiredDummyArgs(currentTableStartLine)
@@ -620,13 +605,7 @@ def generateRowAddCode():
                 GeneratedCode += f"):\n"
                 
                 GeneratedCode += f"\n"
-                
-                # If there's a locker start the add code with a call to it
-                if currentLockerName is not None:
-                    GeneratedCode += f"    {currentLockerName}('lock')\n"
-                    GeneratedCode += f"\n"
-                
-                
+
             # Now create each column's append of data based on the defineColumn lines
             elif primaryKeyword == "defineColumn":
                 # Pull table name off the front of the column name to make arg names
@@ -640,29 +619,25 @@ def generateRowAddCode():
                 
             elif primaryKeyword == "endTable":
             
-                # Get current length (index to this entry) *before* unlocking!!
+                # Get current length (index to this entry)
                 GeneratedCode += f"    thisRef = len({lastColumnName}) - 1\n"
                 GeneratedCode += f"\n"
                 
                 # Process any 'defineIndex' citations
                 addAllDefineIndexCode(currentTableStartLine)
 
-                if currentLockerName is not None:
-                    GeneratedCode += f"    {currentLockerName}('unlock')\n"
-                    GeneratedCode += f"\n"
-
+                # Generate return of current table length
                 GeneratedCode += f"    return (thisRef)\n"
                 
                 currentTableName = None
-                currentLockerName = None
     
     return
 
 #
-# Generate code to delete all rows in a table where RowStatus is None.
-# This is really ugly because doing: "<list> = ..." "de-globals" the list if it's a global list.
+# Generate code to delete all rows in a table where RowStatus is a specified value.
+# This is really ugly because doing: "<list> = ..." "de-globals" the list.
 #
-def generateCompressTableCode():
+def generateDeleteTableRowCode():
 
     global GeneratedCode
     
@@ -720,7 +695,7 @@ def generateCompressTableCode():
             if primaryKeyword == "defineIndex":
                 (tableName, indexName) = elementName.split("_", 1)
                 targetColumnName = indexName[:-4]
-                GeneratedCode += f"            del {elementName}[{tableName}_{targetColumnName}[tableRef]]\n"
+                GeneratedCode += f"            del {elementName}[{tableName}_{targetColumnName}[rowRef]]\n"
                 
         return
 
@@ -736,7 +711,7 @@ def generateCompressTableCode():
             if primaryKeyword == "defineColumn":
                 (tableName, columnName) = elementName.split("_", 1)
                 # For each column copy undeleted column data over to the temporary columns
-                GeneratedCode += f"            _{columnName}.append({elementName}[tableRef])\n"
+                GeneratedCode += f"            _{columnName}.append({elementName}[rowRef])\n"
 
         GeneratedCode += f"\n"
               
@@ -767,7 +742,7 @@ def generateCompressTableCode():
         primaryKeyword = ""
         
         # Get ready to copy from the temp columns to the data back to the original columns
-        GeneratedCode += f"    for tableRef in range(len(_RowStatus)):\n"
+        GeneratedCode += f"    for rowRef in range(len(_RowStatus)):\n"
                     
         while primaryKeyword != "endTable":
         
@@ -776,14 +751,14 @@ def generateCompressTableCode():
             if primaryKeyword == "defineColumn":
                 # Copy over each column element
                 (tableName, columnName) = elementName.split("_", 1)
-                GeneratedCode += f"        {elementName}.append(_{columnName}[tableRef])\n"
+                GeneratedCode += f"        {elementName}.append(_{columnName}[rowRef])\n"
              
         GeneratedCode += f"\n"
              
         return
 
     # Add code to set the correct index values
-    # gTableA_Name2Ref[_Name[tableRef] = tableRef
+    # gTableA_Name2Ref[_Name[rowRef] = rowRef
     def addCorrectIndexValueCode(lineIndex2):
     
         global GeneratedCode
@@ -798,7 +773,7 @@ def generateCompressTableCode():
                 # Set correct / new ref of each index
                 (tableName, columnName) = elementName.split("_", 1)
                 targetColumnName = columnName[:-4]
-                GeneratedCode += f"        {elementName}[{tableName}_{targetColumnName}[tableRef]] = tableRef\n"
+                GeneratedCode += f"        {elementName}[{tableName}_{targetColumnName}[rowRef]] = rowRef\n"
                 
         GeneratedCode += f"\n"
              
@@ -807,7 +782,6 @@ def generateCompressTableCode():
     lineIndex = 0
 
     currentTableName = None
-    currentLockerName = None
     
     someIndexSeen = False
     
@@ -821,40 +795,24 @@ def generateCompressTableCode():
             if primaryKeyword == "defineTable":
 
                 currentTableName = elementName
-                currentLockerName = var1
                     
                 # Look to see if we have to bother with managing indices for this table
                 someIndexSeen = lookForAnyIndexDefinition(lineIndex)
             
-                # Start the add code given any locker
-                if currentLockerName is not None:
-
-                    GeneratedCode += f"\n"
-                    GeneratedCode += f"#\n"
-                    GeneratedCode += f"# Delete erased rows in table {elementName} (using locker = {currentLockerName})\n"
-                    GeneratedCode += f"# Note - this procedure must be written as is because of Python/multiprocessing behavior!\n"
-                    GeneratedCode += f"#\n"
-                    GeneratedCode += f"def {currentTableName}_CompressTableUnderLock():\n"
-                    GeneratedCode += f"\n"
-                    GeneratedCode += f"    {currentLockerName}('lock')\n"
-                    GeneratedCode += f"\n"
-                    
-                else:
-                
-                    GeneratedCode += f"\n"
-                    GeneratedCode += f"#\n"
-                    GeneratedCode += f"# Delete erased rows in table {elementName}\n"
-                    GeneratedCode += f"# Note - this procedure must be written as is because of Python/multiprocessing behavior!\n"
-                    GeneratedCode += f"#\n"
-                    GeneratedCode += f"def {currentTableName}_CompressTable():\n"
-                    GeneratedCode += f"\n"
+                GeneratedCode += f"\n"
+                GeneratedCode += f"#\n"
+                GeneratedCode += f"# Delete erased rows in table {elementName}\n"
+                GeneratedCode += f"# Note - this procedure must be written as is because of Python/multiprocessing behavior!\n"
+                GeneratedCode += f"#\n"
+                GeneratedCode += f"def {currentTableName}_DeleteTableRows(rowStatusValueToDelete = '!All!'):\n"
+                GeneratedCode += f"\n"
 
                 # Add the definition of the local temp arrays to the compressor code
                 defineLocalTempArrays(lineIndex)
 
                 # Set up to copy undeleted columns and delete deleted index data
-                GeneratedCode += f"    for tableRef in range(len({currentTableName}_RowStatus)):\n"
-                GeneratedCode += f"        if {currentTableName}_RowStatus[tableRef] is None:\n"
+                GeneratedCode += f"    for rowRef in range(len({currentTableName}_RowStatus)):\n"
+                GeneratedCode += f"        if (rowStatusValueToDelete == '!All!') or ({currentTableName}_RowStatus[rowRef] == rowStatusValueToDelete):\n"
                 GeneratedCode += f"            pass\n"
             
                 # Remove entries from deleted rows from whatever indices exist
@@ -874,17 +832,12 @@ def generateCompressTableCode():
 
                 if someIndexSeen:
                     # Index over a handy (correct) column
-                    GeneratedCode += f"\n"
-                    GeneratedCode += f"    for tableRef in range(len(_RowStatus)):\n"
+                    GeneratedCode += f"    for rowRef in range(len(_RowStatus)):\n"
                     
                     # Add code to correct the Ref values
                     addCorrectIndexValueCode(lineIndex)
 
-                if currentLockerName is not None:
-                    GeneratedCode += f"    {currentLockerName}('unlock')\n"
-                    GeneratedCode += f"\n"
-                    
-                GeneratedCode += f"    return\n"
+                GeneratedCode += f"    return (len({currentTableName}_RowStatus))\n"
 
             # At this level skip anything that's not a defineTable
             
@@ -897,7 +850,6 @@ def generateTableDumpCode():
 
     lineIndex = 0
     currentTableName = None
-    currentLockerName = None
     
     while lineIndex < len(LinesToProcess):
     
@@ -908,11 +860,10 @@ def generateTableDumpCode():
             if primaryKeyword == "defineTable":
 
                 currentTableName = elementName
-                currentLockerName = arg1
 
                 GeneratedCode += f"\n"
                 GeneratedCode += f"#\n"
-                GeneratedCode += f"# Print values out for table '{currentTableName}' (using locker = {currentLockerName})\n"
+                GeneratedCode += f"# Print values out for table '{currentTableName}'\n"
                 GeneratedCode += f"#\n"
                 GeneratedCode += f"def {currentTableName}_DumpTable(rangeListToDump = None):\n"
                 
@@ -921,14 +872,13 @@ def generateTableDumpCode():
             elif primaryKeyword == "defineColumn":
                 # If dumping the first column of the table generate a header with information about the table
                 if not headerGenerated:
+
                     headerGenerated = True
-                    if currentLockerName is not None:
-                        GeneratedCode += "\n"
-                        GeneratedCode += f"    {currentLockerName}('lock')\n"
+
                     GeneratedCode += "\n"
                     GeneratedCode += f"    print (f'**************')\n"
                     GeneratedCode += f"    print (f'**************')\n"
-                    GeneratedCode += f"    print ('    Table %24s (using locker = {currentLockerName}) has %d entries' % ('{currentTableName}', len({currentTableName}_RowStatus)))\n"
+                    GeneratedCode += f"    print ('    Table %24s has %d entries' % ('{currentTableName}', len({currentTableName}_RowStatus)))\n"
                     GeneratedCode += f"    print (f'**************')\n"
                     GeneratedCode += f"    print (f'**************')\n"
                     GeneratedCode += f"    print (f'')\n"
@@ -949,13 +899,9 @@ def generateTableDumpCode():
                 pass
                 
             elif primaryKeyword == "endTable":
-                if currentLockerName is not None:
-                    GeneratedCode += "\n"
-                    GeneratedCode += f"    {currentLockerName}('unlock')\n"
                 GeneratedCode += "\n"
                 GeneratedCode += f"    return\n"
                 currentTableName = None
-                currentLockerName = None
             
 
 ###################################
@@ -1016,7 +962,7 @@ generateAllVariableDefinitions(datastoreNamePrefix)
 generateRowAddCode()
 
 # Generate code to compress a table when called
-generateCompressTableCode()
+generateDeleteTableRowCode()
 
 # Generate code to print/dump each table's rows when called
 generateTableDumpCode()
