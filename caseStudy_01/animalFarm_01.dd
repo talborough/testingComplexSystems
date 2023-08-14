@@ -37,8 +37,8 @@ defineColumn    gAnimal_RowStatus       None                    # For concurrenc
 endTable
 
 #
-# Examples
+# Example of more types of global shared variables
 #
-defineUnary     example_01              None                    # A single value
-defineList      example_02                                      # A random empty list
-defineDict      example_03                                      # A random empty dictionary
+defineUnary     example_01              123                     # A single value (example_01[0])
+defineList      example_02                                      # An empty list
+defineDict      example_03                                      # An empty dictionary

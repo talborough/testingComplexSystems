@@ -1,0 +1,6 @@
+#
+# This loads ssh code onto a Linux host
+#
+sudo apt update                                 # Update the install libraries
+sudo apt install openssh-server                 # Install and start the ssh server
+sudo systemctl status ssh                       # Show the status of the ssh server if necessary
