@@ -142,7 +142,7 @@ if __name__ == "__main__":
     input ("Hit Enter to print information about chickens in County B: ")
     print ("")
  
-    # Note - all activity is over - iterate on any column
+    # Note - all concurrent activity is over - iterate on any column
     # Criteria to print by
     animalTypeToPrint = "Chicken"
     countyToPrintRef = gCounty_Name2Ref["County B"]
@@ -158,9 +158,11 @@ if __name__ == "__main__":
             if gFarm_gCounty_Ref[farmRef] == countyToPrintRef:
                 tempList.append(f"County '{gCounty_Name[countyToPrintRef]}', farm '{gFarm_Name[farmRef]}' has animal '{gAnimal_Name[animalRef]}'")
               
-    # Sort the  resulting list and print it
+    # Sort the resulting list and print it
     print ("")
     tempList.sort()
     for line in tempList:
         print (line)
+        
+    print ("")
     
