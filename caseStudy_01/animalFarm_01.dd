@@ -27,8 +27,8 @@ endTable
 #
 # gAnimal - The animals on a farm
 #
-# Keyword       Item name                                         
-# =======       =========                                        
+# Keyword       Item name               Default column value if cited
+# =======       =========               =============================
 defineTable     gAnimal                                         # Table definition
 defineColumn    gAnimal_gFarm_Ref                               # The farm owning the animal
 defineColumn    gAnimal_Type                                    # The kind of animal

@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 from multiprocessing import Process
+from threading import Thread
 from multiprocessing import Lock
 
 import time
@@ -40,9 +41,9 @@ class MasterLock:
 
 
 #
-# Called by many processes to add (1) animal to a farm under lock
+# Called by many activities to add (1) animal to a farm under lock
 #
-def addOneAnimal (farmRef, animalType, animalNumber):
+def addOneAnimal(farmRef, animalType, animalNumber):
 
     # Called by each process, this gets them all running at random times over a 2 to 8 second interval
     time.sleep(random.uniform(2.0, 8.0))
@@ -84,40 +85,40 @@ if __name__ == "__main__":
 
 
     #
-    # Add some animals using a bunch of random processes
+    # Add some animals using a bunch of random activities
     #
 
     print ("")
     input ("Hit Enter to add animals randomly: ")
 
-    processes = []
+    activities = []
 
     for i in range(3):
-        processes.append(Process(target = addOneAnimal, args = (farmRefA, "Cow", i+1)))
-        processes[-1].start()
-        processes.append(Process(target = addOneAnimal, args = (farmRefB, "Cow", i+1)))
-        processes[-1].start()
-        processes.append(Process(target = addOneAnimal, args = (farmRefC, "Cow", i+1)))
-        processes[-1].start()
+        activities.append(Process(target = addOneAnimal, args = (farmRefA, "Cow", i+1)))
+        activities[-1].start()
+        activities.append(Process(target = addOneAnimal, args = (farmRefB, "Cow", i+1)))
+        activities[-1].start()
+        activities.append(Process(target = addOneAnimal, args = (farmRefC, "Cow", i+1)))
+        activities[-1].start()
         
     for i in range(10):
-        processes.append(Process(target = addOneAnimal, args = (farmRefA, "Chicken", i+1)))
-        processes[-1].start()
-        processes.append(Process(target = addOneAnimal, args = (farmRefB, "Chicken", i+1)))
-        processes[-1].start()
-        processes.append(Process(target = addOneAnimal, args = (farmRefC, "Chicken", i+1)))
-        processes[-1].start()
+        activities.append(Thread(target = addOneAnimal, args = (farmRefA, "Chicken", i+1)))
+        activities[-1].start()
+        activities.append(Thread(target = addOneAnimal, args = (farmRefB, "Chicken", i+1)))
+        activities[-1].start()
+        activities.append(Thread(target = addOneAnimal, args = (farmRefC, "Chicken", i+1)))
+        activities[-1].start()
         
 
     print ("")
-    print (f"Started {len(processes)} processes...")
+    print (f"Started {len(activities)} activities...")
         
     print ("")
-    print (f"Waiting for {len(processes)} processes to run randomly and complete...")
+    print (f"Waiting for {len(activities)} activities to run randomly and complete...")
     print ("")
         
-    # Wait for all the processes to run (randomly) and complete
-    for aProcess in processes:
+    # Wait for all the activities to run (randomly) and complete
+    for aProcess in activities:
         aProcess.join()
         
 
@@ -142,21 +143,26 @@ if __name__ == "__main__":
     input ("Hit Enter to print information about chickens in County B: ")
     print ("")
  
-    # Note - all concurrent activity is over - iterate on any column
     # Criteria to print by
     animalTypeToPrint = "Chicken"
-    countyToPrintRef = gCounty_Name2Ref["County B"]
+    countyNameToPrint = "County B"
     
     tempList = []
 
-    # For all animals
+    # Get Ref of county to print
+    countyRef = gCounty_Name2Ref[countyNameToPrint]
+    
+    # For all animals (Note - all concurrent activity is over - iterate on any column)
     for (animalRef, animalType) in enumerate(gAnimal_Type):
-        # If correct animal type get farm index
+        # If correct animal type
         if animalType == animalTypeToPrint:
+        
+            # Get an intermediate value
             farmRef = gAnimal_gFarm_Ref[animalRef]
-            # If farm is in the right county
-            if gFarm_gCounty_Ref[farmRef] == countyToPrintRef:
-                tempList.append(f"County '{gCounty_Name[countyToPrintRef]}', farm '{gFarm_Name[farmRef]}' has animal '{gAnimal_Name[animalRef]}'")
+            # If the farm is in the right county
+            if gFarm_gCounty_Ref[farmRef] == countyRef:
+                # Append a line about the county / farm / animal
+                tempList.append(f"County '{gCounty_Name[countyRef]}', farm '{gFarm_Name[farmRef]}' has animal '{gAnimal_Name[animalRef]}'")
               
     # Sort the resulting list and print it
     print ("")
