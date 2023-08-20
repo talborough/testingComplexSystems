@@ -1044,24 +1044,24 @@ class Configurator:
 
     def defineAllResourceControlRows():
     
-        # Make all possible export FS rows
+        # Make all possible, legal export FS rows
         for hostRef in range(1, len(gHost_RowStatus)):
             for exportFSNum in range(Configurator.exportFSPerHost):
                 exportFSRef = gExportFS_AddARow(_gHost_Ref = hostRef,
                                                 _Name = f"host_{'%4.4x' %(hostRef)}_export_{'%4.4x' % (len(gExportFS_RowStatus))}")
                 logging.info(f"Add export FS row for {gHost_Name[hostRef]}")
                                             
-        # Make all possible import FS rows for the export FS rows
+        # Make all possible, legal import FS rows for the export FS rows
         for hostRef in range(1, len(gHost_RowStatus)):
             for exportFSRef in range(len(gExportFS_RowStatus)):
                 # Do not make imports that match exports
-                if hostRef != gExportFS_gHost_Ref[exportFSRef]:
+                if not hostRef == gExportFS_gHost_Ref[exportFSRef]:
                     importFSRef = gImportFS_AddARow(_gHost_Ref = hostRef,
                                                     _gExportFS_Ref = exportFSRef,
                                                     _Name = f"host_{'%4.4x' % (hostRef)}_export_{'%4.4x' % (exportFSRef)}_import_{'%4.4x' % (len(gImportFS_RowStatus))}")
                     logging.info(f"Add import FS row for {gHost_Name[hostRef]}, {gExportFS_Name[exportFSRef]}")
                 
-        # Make all possible FS User rows for the import FS rows
+        # Make all possible, legal FS User rows to go up against the import FS rows
         for hostRef in range(1, len(gHost_RowStatus)):
             for importFSRef in range(len(gImportFS_RowStatus)):
                 # Only make rows for FS users on the same host as the import
@@ -1092,6 +1092,7 @@ class Configurator:
         # We are a process on each host so make all the necessary control threada (per host)
         #
         MasterLock.lock()
+        
         # Start a manage host thread
         Configurator.resourceThreads.append(Thread(target = Configurator.manageHost, \
                                              name = gHost_Name[hostRef], \
@@ -1132,6 +1133,9 @@ class Configurator:
         
     def activator():
 
+        #
+        # A way to slowly, randomly transition the state machines to Active or Inactive
+        #
         def randomTransitionChain(currentState, nextState):
         
             MasterLock.lock()

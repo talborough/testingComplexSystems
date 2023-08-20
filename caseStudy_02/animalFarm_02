@@ -1043,9 +1043,9 @@ class Background:
         
 if __name__ == "__main__":
 
-    # Load in this program's code for in-line text processing
-    CodeLines = open(sys.argv[0], "r").read().splitlines()
-    
+    # Get in line text
+    InLineText.getCodeLines()
+
     # Handle batch mode
     gBatchMode[0] = False
     if len(sys.argv) > 1:
@@ -1086,40 +1086,31 @@ if __name__ == "__main__":
 #
 ####################
 #
-animalFarm_02 (this file) is a part of the "gDS" capability / GitHub repo. gDS provides a very light-weight "data store" 
-feature to Python programs. See the repo README for more on gDS. This -help- covers how this example program works.
+#
+animalFarm_02 does two things: it illustraits the use of "gDS" to operate as a lightweight "data store", 
+and it presents a simulated "test platform". For background see: "https://TestingComplexSystems.com".
 
 
-For more background see: "https://www.linkedin.com/pulse/testing-complex-systems-thomas-alborough"
+The program starts by populating a gDS data store: first with farms then animals in the farms (cows and 
+chickens). The user can then start independent background processes that "tend" and "raise" the animals:
 
-
-This program serves 2 purposes (as described in LinkedIn article):
-
-    -- It demonstraits a use of gDS.
+    -- "tend" - The animals are looked after (cows are milked; chickens have their eggs gathered).
     
-    -- It demonstraits one way to provide an "interactive test platform".
+    -- "raise" - New animals are cloned from existing animals or existing animals are "sent to market" 
+       (their data store rows "erased").
 
-
-animalFarm_02 starts by populating a gDS data store first with farms then animals in the farms (cows and chickens). The 
-user can then start independent background processes that "tend" and "raise" the animals:
-
-    -- "tend" - The animals are looked after (cows milked; chickens have their eggs gathered).
-    
-    -- "raise" - New animals are cloned from existing animals or existing animals are "sent to market" (their data store 
-       rows "erased").
-
+These background processes can be run ad-hoc or, over and over (test "runs", in test "cycles").
        
-The test run executes for a certain amount of time (run time) and it stops and reconciles (checks the data) every so many 
-seconds (cycle time). Both times are user specified.
+A test run executes for a certain amount of time (run time) and it stops and reconciles (checks the 
+data) every so many seconds (cycle time). Both times are user specified.
 
+Milk and eggs are gathered and tracked (two ways) and if the two counts don't match at the end of a 
+cycle, the program exits with an error. The animal count and production values are tracked as:
 
-The milk and eggs are gathered and tracked (two ways) and if the two counts don't match at the end of a cycle, the 
-program exits with an error. The animal count and production values are tracked as:
-
-    -- Calculated - An overall totalizer is adjusted each time the item is created or deleted by a background activities.
+    -- Calculated - An overall totalizer is adjusted each time the item is created or deleted by a 
+       background activities.
     
-    -- Observed -- The amounts are calculated from separate farm totalizer variables.
-
+    -- Observed -- The collection table amounts are calculated from separate farm table variables.
 
 animalFarm_02 runs in one of 2 operating modes:
 
@@ -1128,13 +1119,12 @@ animalFarm_02 runs in one of 2 operating modes:
        
             -- In interactive mode a menu allows the user to start and stop individual activities OR ...
             
-            -- make a "test run" where the specified activities are run over and over (cycles) for a given total
-               time (run time).
+            -- make a "test run" where the specified activities are run over and over (cycles) for a 
+               given total time (run time).
        
-    -- Command line - Here command line args trigger batch mode operation and specify a single run of the code. 
-       For now the screen is updated every 3 seconds in batch mode just so the user can keep an eye on it, but the user has 
-       no control over the run once the run starts.
-
+    -- Command line - Here command line args trigger batch mode operation and specify a single run of 
+       the code. For now the screen is updated every 3 seconds in batch mode just so the user can keep an 
+       eye on it, but the user has no control over the run once the run starts.
        
 The various menu items (interactive as menu selections / batch as Batch arguments (**) "--xx=nn") are:
 
