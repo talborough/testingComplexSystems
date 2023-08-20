@@ -228,11 +228,11 @@ class UI:
         # The challenge here is to produce a sorted display of items that have non-unique names for things
         #
         
-        print ("")
-        print ("                                   Cow  Chx  Busy   New    New   Milk   Eggs ")
-        print ("      County            Farm       Cnt  Cnt         Milk   Eggs  Total  Total")
-        print ("      ======            ====       ===  ===  ====   ====   ====  =====  =====")
-        print ("")
+        gScreenLines[0] += (" \n")
+        gScreenLines[0] += ("                                   Cow  Chx  Busy   New    New   Milk   Eggs  \n")
+        gScreenLines[0] += ("      County            Farm       Cnt  Cnt         Milk   Eggs  Total  Total \n")
+        gScreenLines[0] += ("      ======            ====       ===  ===  ====   ====   ====  =====  ===== \n")
+        gScreenLines[0] += (" \n")
         
         # Go by counties - prepare a dict of county names
         countyName2Ref = {}
@@ -278,7 +278,7 @@ class UI:
                 if inProcessingCount:
                     x = Color.RED
                     
-                print (" %15s %15s  %4d %4d  %s%4d%s %6d %6d %6d %6d" % (countyName, gFarm_Name[farmRef], cowCount, chickenCount, \
+                gScreenLines[0] += (" %15s %15s  %4d %4d  %s%4d%s %6d %6d %6d %6d \n" % (countyName, gFarm_Name[farmRef], cowCount, chickenCount, \
                                                                x, inProcessingCount, y, milkPumped, eggsGathered, \
                                                                gFarm_MilkTotal[farmRef], gFarm_EggsTotal[farmRef]))
                                                                
@@ -290,7 +290,7 @@ class UI:
     def displayAnimalDetail():
     
         out = ""
-        print ("")
+        gScreenLines[0] += (" \n")
     
         for (animalRef, animalRowStatus) in enumerate(gAnimal_RowStatus):
         
@@ -307,14 +307,14 @@ class UI:
             out += x + animal + " "
             
             if len(out) > 100:
-                print (" ", out)
+                gScreenLines[0] += (f" {out} \n")
                 out = ""
                 
-        print (" ", out, Color.WHITE)
+        gScreenLines[0] += (f" {out} \n")
         
-        print ("")
-        print (f" (c) = Cows; (x) = Chickens; Count of gAnimal_Name2Ref index entries = {len(gAnimal_Name2Ref)}")
-        print (f" White = not active; {Color.RED}Red = active; {Color.CYAN}Cyan = erased (to be compressed out){Color.WHITE}")
+        gScreenLines[0] += (" \n")
+        gScreenLines[0] += (f" (c) = Cows; (x) = Chickens; Count of gAnimal_Name2Ref index entries = {len(gAnimal_Name2Ref)} \n")
+        gScreenLines[0] += (f" White = not active; {Color.RED}Red = active; {Color.CYAN}Cyan = erased (to be compressed out){Color.WHITE} \n")
         
         return
 
@@ -405,10 +405,10 @@ class UI:
         x = Color.RED
         y = Color.WHITE
     
-        print ("")
-        print (f" {x}{gTotalAnimalsCalculated[0]}{y} animals calculated; {x}{gTotalAnimalsObserved[0]}{y} animals observed")
-        print (f" {x}{gTotalMilkCalculated[0]}{y} milk production calculated; {x}{gTotalMilkObserved[0]}{y} milk production observed")
-        print (f" {x}{gTotalEggsCalculated[0]}{y} egg production calculated; {x}{gTotalEggsObserved[0]}{y} egg production observed")
+        gScreenLines[0] += (" \n")
+        gScreenLines[0] += (f" {x}{gTotalAnimalsCalculated[0]}{y} animals calculated; {x}{gTotalAnimalsObserved[0]}{y} animals observed \n")
+        gScreenLines[0] += (f" {x}{gTotalMilkCalculated[0]}{y} milk production calculated; {x}{gTotalMilkObserved[0]}{y} milk production observed \n")
+        gScreenLines[0] += (f" {x}{gTotalEggsCalculated[0]}{y} egg production calculated; {x}{gTotalEggsObserved[0]}{y} egg production observed \n")
        
         return
       
@@ -664,8 +664,8 @@ class UI:
             x = Color.RED
 
         # Line 1 of header
-        print ("\033[H\033[J")
-        print (" Uptime in seconds = %d; Background process count = %s%d%s" % \
+        gScreenLines[0] = ("\033[H\033[J \n")
+        gScreenLines[0] += (" Uptime in seconds = %d; Background process count = %s%d%s" % \
               (time.time() - gStartTime[0], x, UI.someBackgroundAlive(), y))
 
         # Line 2 of header
@@ -680,17 +680,17 @@ class UI:
         if UI.rxCount:
             x4 = Color.RED
 
-        print (f" Background composition: Tend cow = {x1}{UI.tcCount}{y}; Raise cow = {x2}{UI.rcCount}{y}; Tend chicken = {x3}{UI.txCount}{y}; Raise chicken = {x4}{UI.rxCount}{y}")
+        gScreenLines[0] += (f" Background composition: Tend cow = {x1}{UI.tcCount}{y}; Raise cow = {x2}{UI.rcCount}{y}; Tend chicken = {x3}{UI.txCount}{y}; Raise chicken = {x4}{UI.rxCount}{y} \n")
 
         # Line 3 of header
         x = Color.RED
         y = Color.WHITE
         # If running background down in interactive "test run" mode
         if gMakeTestRun[0] and (gRunStopTime[0] == 0):
-            print (f" {x}Test run rundown{y}")
+            gScreenLines[0] += (f" {x}Test run rundown{y} \n")
         # If interactive
         elif (not gMakeTestRun[0]) or (gRunStopTime[0] == 0):
-            print (f" {x}Interactive operation{y}")
+            gScreenLines[0] += (f" {x}Interactive operation{y} \n")
         # Must be "test run" mode
         else:
             if {int(gCycleStopTime[0] - time.time()) > 0}:
@@ -700,7 +700,7 @@ class UI:
             batch = ""
             if gBatchMode[0]:
                 batch = "Batch mode! "
-            print (f" {x}{batch}Test run{y} time left: {x6}{int(gRunStopTime[0] - time.time())}{y}; Test cycle time left: {x5}{int(gCycleStopTime[0] - time.time())}{y}")
+            gScreenLines[0] += (f" {x}{batch}Test run{y} time left: {x6}{int(gRunStopTime[0] - time.time())}{y}; Test cycle time left: {x5}{int(gCycleStopTime[0] - time.time())}{y} \n")
 
         # So we lock here. A hot lock will hang the display for some amount of time
         MasterLock.lock()
@@ -714,27 +714,27 @@ class UI:
         # Print calculated and observed counts and menus if not batch
         if not gBatchMode[0]:
         
-            print ("")
-            print (" The 3 lines below are only accurate after ((up) and (ca)) or (va) operations!")
+            gScreenLines[0] += (" \n")
+            gScreenLines[0] += (" The 3 lines below are only accurate after ((up) and (ca)) or (va) operations! \n")
             #  Update observed now because it's cheap
             UI.updateObserved()
             UI.printCalculatedAndObserved()
             
             # Update menu
-            print ("")
-            print (" fs / ad = Display farm summary; display animal detail")
-            print (" dc / df / da = Dump counties / farms / animals")
+            gScreenLines[0] += (" \n")
+            gScreenLines[0] += (" fs / ad = Display farm summary; display animal detail \n")
+            gScreenLines[0] += (" dc / df / da = Dump counties / farms / animals \n")
             
             if not gMakeTestRun[0]:
-                print ("")
-                print (" tc / tx / rc / rx = tend cows, chickens / raise cows, chickens")
-                print (" up / ca / va = Update farm production tables; Compress the gAnimal table; Verify all")
+                gScreenLines[0] += (" \n")
+                gScreenLines[0] += (" tc / tx / rc / rx = tend cows, chickens / raise cows, chickens \n")
+                gScreenLines[0] += (" up / ca / va = Update farm production tables; Compress the gAnimal table; Verify all \n")
 
-            print (" st / eb = Start a test run; End all (background/test run) processing")
-            print (" e1 / e2 = Inject errors during a test run")
-            print (" help - Print help on screen")
-            print ("")
-            print (f" Last command = '{UI.lastCommand}'")
+            gScreenLines[0] += (" st / eb = Start a test run; End all (background/test run) processing \n")
+            gScreenLines[0] += (" e1 / e2 = Inject errors during a test run \n")
+            gScreenLines[0] += (" help - Print help on screen \n")
+            gScreenLines[0] += (" \n")
+            gScreenLines[0] += (f" Last command = '{UI.lastCommand}' \n")
     
         # The display is up so stand down
         MasterLock.unlock()
@@ -749,12 +749,13 @@ class UI:
         # More time in Batch mode - just sleep 3 seconds per screen update
         elif gBatchMode[0]:
         
+            print (gScreenLines[0])
             time.sleep(3)
             
         # Else, interactive
         elif not gBatchMode[0]:
 
-            print ("")
+            print (gScreenLines[0])
             print (" Type a command from the menu above then hit Enter: ")
 
             # Get any user input

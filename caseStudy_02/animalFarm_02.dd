@@ -42,6 +42,7 @@ defineUnary     gMakeTestRun            False                   # Straight inter
 defineUnary     gRunStopTime            0                       # Stop test run after this time
 defineUnary     gCycleStopTime          0                       # Stop test cycle after this time
 defineUnary     gBatchMode              False                   # Make a test run from the command line / in batch mode 
+defineUnary     gScreenLines            ""                      # Collect screen lines here to display
 #
 defineUnary     gTotalMilkCalculated    0                       # Overall counts for internal animalFarm_02 checking
 defineUnary     gTotalMilkObserved      0                       # "Calculated" = counted as made / "erased"
