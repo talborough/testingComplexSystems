@@ -469,6 +469,8 @@ class UI:
         if gTotalAnimalsCalculated[0] != gTotalAnimalsObserved[0] or \
            gTotalMilkCalculated[0] != gTotalMilkObserved[0] or \
            gTotalEggsCalculated[0] != gTotalEggsObserved[0]:
+           
+            print (gScreenLines[0])
 
             print ("")
             print (f" {Color.RED}The counts above don't match!!!{Color.WHITE}")
