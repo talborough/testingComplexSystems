@@ -66,7 +66,7 @@ class MasterLock:
 
 
 #
-# This support in-line text blocks and extractsing them at run time.
+# This supports extracting in-line text blocks at run time.
 # It's good for templates and "help" blocks.
 #
 class InLineText:
@@ -122,72 +122,86 @@ class Color:
 
 
 #
-# Support inter-host communication for the main thread of the nfsTest code.
+# This code supports communication between the Control Host (the host this code runs 
+# on) and the Test Hosts using Paramiko (using ssh).
 #
-# This code supports communication between the Control Host and the Test Hosts using Paramiko 
-# (using ssh).
+# Note that the code in the state machines that performs command-line activity (make 
+# directories; mount file systems) does not use this code (see the Configurator class).
 #
-# Note that the code in the state machines that performs NFS-related command-line activity (make 
-# directories; mount file systems) uses per-thread connection onjects created in that code (Paramiko isn't 
-# thread safe so the simplest bet is to create thread-local connection objects as they are needed
-# in that code.)
+# This code is only uaed to provide functionality *before* a test run and at this time
+# is *not* used once a test run has started.
 #
 class HostComm:
 
-    # This list of Paramiko connections parallels gDS table gHost. Element [0] is the localhost.
+    # This list of Paramiko connections parallels the gDS table gHost.
+    # Element [0] is the localhost.
     hostConnections = []
 
-    # Set up HostComm.hostConnections[hostRef] instances for the hostRef list passed in
-    def connectToHostRefList(hostRefList):
+    # Set up HostComm.hostConnections[hostRef] instances for the hostRef passed in.
+    # This elaborate code is used only once; the "reconnectToHosts" routine is used after
+    # a host is rebooted by the cleanup routine "cleanall".
+    def addAHostConnection(hostRef):
+    
+        # Check that the 2 host lists are in sync
+        if len(HostComm.hostConnections) != hostRef:
+            print ("")
+            print ("Programming error - host lists are not in sync - dumping call stack")
+            x = 1/0
 
-        HostComm.hostConnections = []
-        
-        print ("")
-        
-        for hostRef in hostRefList:
-        
-            try:
+        try:
 
-                HostComm.hostConnections.append(paramiko.client.SSHClient())
-                HostComm.hostConnections[hostRef].set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                HostComm.hostConnections[hostRef].connect(gHost_Identifier[hostRef], username = gUsername[0], password = gPassword[0])
-                
-                # Get the IP and hostname of the host and set them in the gDS gHost table
-                (i, o, e) = HostComm.executeOnOneHost(hostRef, "hostname -I")
-                gHost_IP[hostRef] = o.read().decode().strip()
-                (i, o, e) = HostComm.executeOnOneHost(hostRef, "hostname")
-                gHost_Hostname[hostRef] = o.read().decode().strip()
-                
-                gHost_Name[hostRef] = f"host #{hostRef}"
-                
-                print (f"Create a paramiko ssh connection to {gHost_Name[hostRef]} / {gHost_Identifier[hostRef]} / {gHost_IP[hostRef]} / {gHost_Hostname[hostRef]}")
-
-            except Exception as e:
+            HostComm.hostConnections.append(paramiko.client.SSHClient())
+            HostComm.hostConnections[hostRef].set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            HostComm.hostConnections[hostRef].connect(gHost_Identifier[hostRef], username = gUsername[0], password = gPassword[0])
             
-                print (e)
-                logging.info(f"{e}")
-                print ("Check that the ssh server is installed and running (see nfsTest.conf file for directions)")
-                sys.exit(1)
+            # Get the IP and hostname of the host and set them in the gDS gHost table
+            (i, o, e) = HostComm.executeOnOneHost(hostRef, "hostname -I")
+            gHost_IP[hostRef] = o.read().decode().strip()
+            (i, o, e) = HostComm.executeOnOneHost(hostRef, "hostname")
+            gHost_Hostname[hostRef] = o.read().decode().strip()
+            
+            gHost_Name[hostRef] = f"host #{hostRef}"
+            
+            x = f"Create a paramiko ssh connection to {gHost_Name[hostRef]} / {gHost_Identifier[hostRef]} / {gHost_IP[hostRef]} / {gHost_Role[hostRef]} / {gHost_Hostname[hostRef]}"
+            print (x)
+            logging.info(x)
+
+        except Exception as e:
+        
+            print ("")
+            print (e)
+            logging.info(f"{e}")
+            print ("Check that the ssh server is installed and running (see nfsTest.conf file for directions)")
+            print ("")
+            sys.exit(1)
                 
         return
         
-    # Reconnect to an existing connection
-    def reconnectToHostRefList(hostRefList):
+    # Reconnect any hosts rebooting during a "cleanall" command
+    def reconnectRebootingHosts():
 
-        for hostRef in hostRefList:
-        
-            print (f"Reconnect to {gHost_Name[hostRef]}")
-        
-            try:
-
-                HostComm.hostConnections[hostRef] = paramiko.client.SSHClient()
-                HostComm.hostConnections[hostRef].set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                HostComm.hostConnections[hostRef].connect(gHost_Identifier[hostRef], username = gUsername[0], password = gPassword[0])
-
-            except Exception as e:
+        # Look at all test hosts
+        for hostRef in range(1, len(gHost_RowStatus)):
             
-                print (e)
-                sys.exit(99)
+            # If no active host connection
+            tempConnection = None
+            while HostComm.hostConnections[hostRef] is None:
+        
+                print (f" Try to reconnect to {gHost_Name[hostRef]}")
+            
+                try:
+
+                    tempConnection = paramiko.client.SSHClient()
+                    tempConnection.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                    tempConnection.connect(gHost_IP[hostRef], username = gUsername[0], password = gPassword[0])
+                    
+                    HostComm.hostConnections[hostRef] = tempConnection
+                    print (f" Connected to {gHost_Name[hostRef]}")
+                    time.sleep(1)
+
+                except Exception as e:
+                
+                    time.sleep(0.5)
                 
     def putFile (hostRef, src, dest):
  
@@ -217,7 +231,7 @@ class HostComm:
     
         return HostComm.hostConnections[hostRef].exec_command(command)
 
-    # Execute a command on a host and return result of "(i, o, e)"
+    # Execute a command on a host and return result of "(i, o, e)" unless the command failed
     def executeOnOneHostWithCheck(hostRef, command):
     
         (i, o, e) = HostComm.hostConnections[hostRef].exec_command(command)
@@ -257,36 +271,35 @@ class HostComm:
         print ("")
         for hostRef in range(startRange, len(gHost_RowStatus)):
         
-            print ("%d) - %20s %20s %20s" % (hostRef, gHost_Identifier[hostRef], gHost_IP[hostRef], gHost_Hostname[hostRef]))
+            print (" %d) - %20s %20s %20s" % (hostRef, gHost_Identifier[hostRef], gHost_IP[hostRef], gHost_Hostname[hostRef]))
             
         print ("")
         if processControlHost:
-            print ("'all' = all; 'test' = all but '0'; or, numbers separated by whitespace")
+            print (" 'all' = all; 'test' = all but '0'; or, numbers separated by whitespace")
         else:
-            print ("'test' = all but '0'; or, numbers separated by whitespace")
+            print (" 'test' = all but '0'; or, numbers separated by whitespace")
         print ("")
         
         selection = input(prompt)
         
-        retValueList = []
+        hostRefList = []
         if "all" in selection:
-            retValueList = range(0, len(gHost_RowStatus))
+            hostRefList = range(0, len(gHost_RowStatus))
         elif "test" in selection:
-            retValueList = range(1, len(gHost_RowStatus))
+            hostRefList = range(1, len(gHost_RowStatus))
         else:
             selection = selection.split()
             for string in selection:
-                retValueList.append(int(string))
+                hostRefList.append(int(string))
                 
-        if (not processControlHost) and (0 in retValueList):
+        if (not processControlHost) and (0 in hostRefList):
         
             print ("")
-            print ("This operation can not be performed on the Control Host (#0)")
+            print ("This operation can not be performed on the Control host (#0)")
             print ("")
-            input("Hit Enter to continue: ")
-            retValueList = []
+            hostRefList = []
             
-        return (retValueList)
+        return (hostRefList)
 
 
 #
@@ -342,7 +355,7 @@ class Platform:
     exportFSPerHost = 3
     fsUserPerImportFS = 3
 
-    # This adjusts the rate at which the 'activator' forces state machine ransitions
+    # These define the rate at which the 'activator' forces state machine ransitions
     
     secondsPerStateTransition = 1
     transitionsPerHost = 1
@@ -377,8 +390,7 @@ class Platform:
         
         # Conf file is here so let's process it
         
-        # Make the control host (localhost) hostRef 0
-        # Add the production row
+        # Make the control host (localhost) hostRef = 0
         logging.info("Add Control gHost row")
         gHost_AddARow(_Identifier = "localhost", _IP = "localhost", _Role = "Control", _State = "")
                 
@@ -423,14 +435,14 @@ class Platform:
                     # If we still need hosts
                     if len(gHost_RowStatus) < (serverCount + clientCount + 1):
                 
-                        # Add a production row; roles are set below after parsing all of the nfsTest.conf file
+                        # Add a row; roles are set below after parsing all of the nfsTest.conf file
                         gHost_AddARow(_Identifier = lineBits[2])
                         logging.info(f"Adding a gHost row for {lineBits[2]}")
                         
                     else:
                     
                         print ("")
-                        print (f"Ignoring extra 'testhostIdentifier' {lineBits[2]}")
+                        print (f"Ignoring extra 'testhostIdentifier' {lineBits[2]} line")
 
                 elif lineBits[0] == "serverCount":
                     serverCount = int(lineBits[2])
@@ -469,7 +481,7 @@ class Platform:
             # Bump line pointer
             lineIndex += 1
             
-        # The contrl gHost row has been made above; set server and client roles
+        # The contrl gHost row has been made above; set server and client host roles
         
         # Make sure we have enough hosts to satisfy the server and client counts in the nfsTest.conf file
         if (serverCount + clientCount + 1) > len(gHost_RowStatus):
@@ -492,7 +504,7 @@ class Platform:
 
         return
 
-    # Ping out to all from localhost
+    # Ping out to all hosts from the Control / localhost
     def pingAllFromLocalhost():
     
         print ("")
@@ -537,7 +549,7 @@ class Platform:
         packageLoadList = InLineText.getText("Package installs").splitlines()
         fileCopyList = InLineText.getText("File copies").splitlines()
         
-        hostRefList = HostComm.getHostRefList("Enter test hosts to load the necessary pagkages and files: ", processControlHost = False)
+        hostRefList = HostComm.getHostRefList("Enter the test hosts to load the necessary pagkages and files onto: ", processControlHost = False)
             
         if len(hostRefList):
 
@@ -568,7 +580,7 @@ class Platform:
                 print ("")
 
         print ("")
-        input ("Hit Enter to continue: ")
+        input (" Hit Enter to continue: ")
 
         return
 
@@ -579,12 +591,108 @@ class Platform:
 #
 class UI:
 
+    # Track firt execution so we can ask to "cleanall"
+    firstTime = True
+
     # Help the user remember where they are
     lastCommand = "<none>"
 
     # The currently displaying screen (we only have one)
     displayName = "configuratorStates"
     
+    # 
+    # Clean the nfs test hosts entirely from wthe artifacts found on them
+    #
+    def cleanAll():
+    
+        def cleanIt():
+    
+            #
+            # Stop and clean up nfsTest artifacts
+            # Do not use any gDS entries
+            # Use only artifacts found on the hosts
+            # We can clean out the related gDS entries after if needed
+            #
+            # Kill any processes using the client mount points so the unmounts work
+            #
+            for hostRef in range(1, len(gHost_RowStatus)):
+                (i, o, e) = HostComm.executeOnOneHostWithWait(hostRef, \
+                        f"echo {gPassword[0]} | sudo -S lsof -N | grep 'nfsTest\|ioEngine'")
+                lsofLines = o.read().decode().splitlines()
+                for lsofLine in lsofLines:
+                    process = lsofLine.split()[0]
+                    pid = lsofLine.split()[1]
+                    mntPoint = lsofLine.split()[-2]
+                    print (f" Kill process '{process}' / '{pid}' using '{mntPoint}' on {gHost_Name[hostRef]}")
+                    HostComm.executeOnOneHostWithWait(hostRef, \
+                        f"echo {gPassword[0]} | sudo -S kill -9 {pid}")
+            #
+            # Unmount all nfsTest client shares on all hosts
+            #
+            for hostRef in range(1, len(gHost_RowStatus)):
+                (i, o, e) = HostComm.executeOnOneHostWithWait(hostRef, "df")
+                dfLines = o.read().decode().splitlines()
+                for dfLine in dfLines:
+                    if "nfsTest" in dfLine:
+                        dfMountpoint = dfLine.split()[-1]
+                        print (f" Unmount '{dfMountpoint}' on {gHost_Name[hostRef]}")
+                        HostComm.executeOnOneHostWithWait(hostRef, \
+                            f"echo {gPassword[0]} | sudo -S umount {dfMountpoint}")
+                print (f" Clean out '/etc/fstab' on {gHost_Name[hostRef]}")
+                HostComm.executeOnOneHostWithWait(hostRef, \
+                    f"echo {gPassword[0]} | sudo -S ./removeALine /etc/fstab nfsTest")
+                print (f" Clean out '/etc/ioEngine/* on {gHost_Name[hostRef]}")
+                HostComm.executeOnOneHostWithWait(hostRef, \
+                    f"echo {gPassword[0]} | sudo -S rm -rf /var/ioEngine")
+                    
+            # Un-export all nfsTest shares, restart the servers and delete the shared directories
+            for hostRef in range(1, len(gHost_RowStatus)):
+                print (f" Clean '/etc/exports' file on {gHost_Name[hostRef]}")
+                HostComm.executeOnOneHostWithWait(hostRef, \
+                    f"echo {gPassword[0]} | sudo -S ./removeALine /etc/exports nfsTest")
+                print (f" Restart NFS server on {gHost_Name[hostRef]}")
+                HostComm.executeOnOneHostWithWait(hostRef, \
+                    f"echo {gPassword[0]} | sudo -S systemctl restart nfs-kernel-server")
+                print (f" Delete '/var/nfsTest/*' on {gHost_Name[hostRef]}")
+                HostComm.executeOnOneHostWithWait(hostRef, \
+                    f"echo {gPassword[0]} | sudo -S rm -rf /var/nfsTest")
+                print (f" Delete '/nfsTest/*' on {gHost_Name[hostRef]}")
+                HostComm.executeOnOneHostWithWait(hostRef, \
+                    f"echo {gPassword[0]} | sudo -S rm -rf /nfsTest")
+
+        print ("")
+                    
+        cleanIt()
+
+        # See if any directories with stale file handles exist and reboot the host if so
+        cleanAgain = False
+        print ("")
+        for hostRef in range(1, len(gHost_RowStatus)):
+            print (f" Check for populated '/nfsTest' (client mount) directories on {gHost_Name[hostRef]}")
+            (i, o, e) = HostComm.executeOnOneHostWithWait(hostRef, \
+                f"echo {gPassword[0]} | sudo -S ls -al /nfsTest")
+            output = o.read().decode()
+            print (output)
+            retcode = o.channel.recv_exit_status()
+            if not retcode:
+
+                print (f" Reboot {gHost_Name[hostRef]}")
+                print ("")
+
+                HostComm.executeOnOneHostWithWait(hostRef, \
+                    f"echo {gPassword[0]} | sudo -S shutdown -r now")
+
+                HostComm.hostConnections[hostRef] = None
+                cleanAgain = True
+                
+        HostComm.reconnectRebootingHosts()
+            
+        if cleanAgain:
+            cleanIt()
+            
+        print ("")
+        input (" Hit Enter to continue: ")
+
     # Process user input
     def processCommand(command):
     
@@ -592,113 +700,22 @@ class UI:
         if command == "help":
         
             print (InLineText.getText("Help"))
-            input ("Enter <CR> to continue: ")
+            input (" Enter <CR> to continue: ")
             
             
         elif command == "cleanall":
-        
-            def doIt():
-        
-                #
-                # Stop and clean up *all* nfsTest-ing artifacts
-                # Do not use any gDS entries
-                # Use only artifacts found on the hosts
-                # We can clean out the related gDS entries after if needed
-                #
-                # Kill any processes using the client mount points so the unmounts work
-                for hostRef in range(1, len(gHost_RowStatus)):
-                    (i, o, e) = HostComm.executeOnOneHostWithWait(hostRef, \
-                            f"echo {gPassword[0]} | sudo -S lsof -N | grep 'nfsTest\|ioEngine'")
-                    lsofLines = o.read().decode().splitlines()
-                    # print (1, len(lsofLines))
-                    for lsofLine in lsofLines:
-                        # print (lsofLine)
-                        process = lsofLine.split()[0]
-                        pid = lsofLine.split()[1]
-                        mntPoint = lsofLine.split()[-2]
-                        print (f"Kill process '{process}' / '{pid}' using '{mntPoint}' on {gHost_Name[hostRef]}")
-                        HostComm.executeOnOneHostWithWait(hostRef, \
-                            f"echo {gPassword[0]} | sudo -S kill -9 {pid}")
-                #
-                # Unmount all nfsTest client shares on all hosts
-                for hostRef in range(1, len(gHost_RowStatus)):
-                    (i, o, e) = HostComm.executeOnOneHostWithWait(hostRef, "df")
-                    dfLines = o.read().decode().splitlines()
-                    for dfLine in dfLines:
-                        if "nfsTest" in dfLine:
-                            dfMountpoint = dfLine.split()[-1]
-                            print (f"Unmount '{dfMountpoint}' on {gHost_Name[hostRef]}")
-                            HostComm.executeOnOneHostWithWait(hostRef, \
-                                f"echo {gPassword[0]} | sudo -S umount {dfMountpoint}")
-                            time.sleep(1)
-                    print (f"Clean out '/etc/fstab' on {gHost_Name[hostRef]}")
-                    HostComm.executeOnOneHostWithWait(hostRef, \
-                        f"echo {gPassword[0]} | sudo -S ./removeALine /etc/fstab nfsTest")
-                    print (f"Delete '/var/nfsTest' on {gHost_Name[hostRef]}")
-                    HostComm.executeOnOneHostWithWait(hostRef, \
-                        f"echo {gPassword[0]} | sudo -S rm -rf /var/nfsTest")
-                    print (f"Delete '/var/ioEngine' on {gHost_Name[hostRef]}")
-                    HostComm.executeOnOneHostWithWait(hostRef, \
-                        f"echo {gPassword[0]} | sudo -S rm -rf /var/ioEngine")
 
-                # Un-export all nfsTest shares, restart the servers and delete the shared directories
-                for hostRef in range(1, len(gHost_RowStatus)):
-                    print (f"Clean '/etc/exports' file on {gHost_Name[hostRef]}")
-                    HostComm.executeOnOneHostWithWait(hostRef, \
-                        f"echo {gPassword[0]} | sudo -S ./removeALine /etc/exports nfsTest")
-                    print (f"Restart NFS server on {gHost_Name[hostRef]}")
-                    HostComm.executeOnOneHostWithWait(hostRef, \
-                        f"echo {gPassword[0]} | sudo -S systemctl restart nfs-kernel-server")
-                    print (f"Delete '/var/nfsTest' on {gHost_Name[hostRef]}")
-                    HostComm.executeOnOneHostWithWait(hostRef, \
-                        f"echo {gPassword[0]} | sudo -S rm -rf /var/nfsTest")
-                    print (f"Delete '/nfsTest' on {gHost_Name[hostRef]}")
-                    HostComm.executeOnOneHostWithWait(hostRef, \
-                        f"echo {gPassword[0]} | sudo -S rm -rf /nfsTest")
-                        
-            print ("")
-                        
-            doIt()
-
-            hostRefList = []
-            
-            # See if any directories with stale file handles exist and reboot
-            for hostRef in range(1, len(gHost_RowStatus)):
-                print (f"Checking for undeleted 'nfsTest' directories on {gHost_Name[hostRef]}")
-                (i, o, e) = HostComm.executeOnOneHostWithWait(hostRef, \
-                    f"echo {gPassword[0]} | sudo -S ls -al /nfsTest")
-                output = o.read().decode()
-                print (output)
-                if "???" in output:
-                    print (f"Rebooting {gHost_Name[hostRef]}")
-                    HostComm.executeOnOneHostWithWait(hostRef, \
-                        f"echo {gPassword[0]} | sudo -S shutdown -r now")
-
-                    hostRefList.append(hostRef)
-                        
-            # Reconnect to an existing connection and clean what's leftover
-            if len(hostRefList):
-                print ("")
-                print ("Wait 20 seconds for the Linux reboot(s)")
-                print ("")
-                time.sleep(20)
-                HostComm.reconnectToHostRefList(hostRefList)
-                print ("")
-
-                doIt()
-                
-            print ("")
-            input ("Hit Enter to continue: ")
+            UI.cleanAll()
 
 
         elif command == "put":
         
-            HostComm.putFile(int(input("hostRef: ")), input("Src: "), input("Dest: "))
+            HostComm.putFile(int(input(" hostRef: ")), input("Src: "), input("Dest: "))
 
 
         elif command == "get":
         
-            HostComm.getFile(int(input("hostRef: ")), input("Src: "), input("Dest: "))
+            HostComm.getFile(int(input(" hostRef: ")), input("Src: "), input("Dest: "))
 
             
         # Execute command(s) on user-selectable hosts
@@ -712,14 +729,14 @@ class UI:
                 
                 if len(hostRefList):
                 
-                    command = "x"
+                    command = "dummy"
                     
                     while command:
 
                         print ("")
                         print ("systemctl status ssh")
                         print ("")
-                        command = input ("Enter the command to execute remotely: ")
+                        command = input (" Enter the command to execute remotely: ")
                         command = command.strip()
 
                         if command:
@@ -757,22 +774,56 @@ class UI:
 
         elif command == "swap2":
         
-            gActivatorState[0] = "Swap host #2's role"
-
+            if gActivatorState[0] != "Activate randomly":
+                print ("")
+                print (" Must be running a test ('st' command)")
+                time.sleep(2)
+            else:
+                gActivatorState[0] = "Swap host #2's role"
 
         elif command == "reboot1":
+        
+            #
+            # This handles a reboot. It needs to go in it's own thread so the screen can
+            # be updated while this happens.
+            #
             
-            HostComm.executeOnOneHostWithWait(1, f"echo {gPassword[0]} | sudo -S shutdown -r now")
-       
+            if gActivatorState[0] != "Activate randomly":
+                print ("")
+                print (" Must be running a test ('st' command)")
+                time.sleep(2)
+
+            else:
+
+                print ("")
+                print (" Set host #1 to be rebooted")
+                gHost_Reboot[1] = True
+                print (" Wait for all its state machine threads to acknowlege")
+                Configurator.waitForAllRebooting(hostRef = 1)
+                
+                # Set to renew any old (invalid) mainline host connection
+                HostComm.hostConnections[1] = None
+                # Force a new connection
+                HostComm.reconnectRebootingHosts()
+                print (" Actually do the reboot")
+                HostComm.executeOnOneHostWithWait(1, \
+                    f"echo {gPassword[0]} | sudo -S shutdown -r now")
+                
+                print (" Wait for the host to shut down")
+                time.sleep(1)
+
+                print (" And now wait for it to start up")
+                # Zap the connection object again and...
+                HostComm.hostConnections[1] = None
+                # ...try to reconnect until it works
+                HostComm.reconnectRebootingHosts()
+                    
+                gHost_Reboot[1] = False
+
         
         elif command == "et":
         
             gActivatorState[0] = "Deactivate randomly"
-
-
-        elif command == "exit":
-        
-            gActivatorState[0] = "Stop all activity"
 
 
         # Dump host table
@@ -815,6 +866,10 @@ class UI:
     # Service the updating of the terminal screen
     def serviceTerminal(getInput):
     
+        gDisplayGenerationTime[0] = time.time()
+        
+        MasterLock.lock()
+        
         displayLines = "\033[H\033[J \n"
 
         # Decide what display to show
@@ -825,7 +880,6 @@ class UI:
             displayLines += " Uptime: %d secs; Activator state: %s%s%s \n" % ((time.time() - gStartTime[0]), x, gActivatorState[0], y)
             
             if (time.time() - gStartTime[0]) > 600:
-                print (displayLines)
                 print ("")
                 print ("Stopping after 10 minutes so we don't consume a lot disk space in nfsTest.log.")
                 print ("")
@@ -833,6 +887,8 @@ class UI:
             
             displayLines += " \n"
             displayLines += Configurator.generateStatisticsDisplay(displayLines)
+            
+            MasterLock.unlock()
             
             # Update menu
             displayLines += " \n"
@@ -842,27 +898,38 @@ class UI:
             displayLines += " cleanall   = Clean up all artifacts on all test host(s) no matter what \n"
             displayLines += " ecmd       = Execute command(s) on any host(s) \n"
             displayLines += " st / et    = Start / end testing \n"
-            displayLines += " swap2 / reboot1  = swap role on host #2 / reboot host #1 \n"
+            displayLines += " swap2 / reboot1  = swap role of host #2 / reboot host #1 \n"
             displayLines += " \n"
                 
             displayLines += " help     = Print help on the screen \n"
             displayLines += " \n"
             displayLines += f" Last command = '{UI.lastCommand}' \n"
     
-            # Print whole screen with one command (no flashing)
+            # Print whole screen with one "print" (no flashing)
             print (displayLines)
 
+            # Clean the test hosts the first time through this code
+            if UI.firstTime:
+                print ("")
+                answer = input(" Enter 'y' to 'clean all' test hosts: ")
+                if answer == "y":
+                    UI.cleanAll()
+                print ("")
+
             i = ""
-            if getInput:
+            if (not UI.firstTime) and (getInput):
                 # Get any user input and also pause for 2 seconds
                 print (" Type a command from the menu above then hit Enter:")
                 i, o, e = select.select([sys.stdin], [], [], 2)
             else:
                 time.sleep(2)
+
+                # No longer the first time
+            UI.firstTime = False
             
             # If some input
             if i:
-            
+                
                 command = sys.stdin.readline().strip()
                 
                 UI.lastCommand = command
@@ -870,48 +937,62 @@ class UI:
                 # Process user input
                 UI.processCommand(command)
 
-        return (displayLines)
+        return ()
         
 
-    # Watch/control what's going on from display rendered on terminal
+    # Watch/control what's going on from the display rendered on the terminal
     def coreInteractiveLogic():
     
-        # Always update the screen - need a "exit" command to exit
-        while UI.lastCommand != "exit":
+        # Always update the screen
+        while not gAllStop[0]:
 
             # Update screen and process any user input
             UI.serviceTerminal(getInput = True)
-
-        # Must be "exit" command - wait for deactivation of all resources with no user input
-        while gAllActive[0] != 0:
-
-            # Update screen only
-            UI.serviceTerminal(getInput = False)
             
-        # Wait for the one main test process
-        startWaitTime = time.time()
-        while Configurator.mainTestProcess.is_alive():
-            print (f"Waiting for main test process to stop ({int(time.time() - startWaitTime)})")
-            time.sleep(3)
-            
-        # Join up to the above
-        Configurator.mainTestProces.join()
-        
-        print ("")
-        print ("Successfully exiting nfsTest main thread")
-        sys.exit(0)
+        time.sleep(100000)
 
 
 """
+
+Program flow:
 
 Command "st" starts one "mainTestProcesses" in "startATestRunProcess"
     Define state machine rows in defineAllResourceControlRows in "startATestRunProcess"
     Start one "perHostResourceManagementProcesses" per host in "startATestRunProcess"
         Start one "resourceThreads" per resource row in "startAllConfiguratorThreads"
     Advance the state machine(s) in "activator"
+    
+Host communication operation:
+
+Paramiko is not thread safe so we need a separate Paramiko object per host, per thread.
+
+ssh has a limit of 10 connection attempts per second. We handle this by only connecting 
+to a host when we need to.
+
+So, to reboot a server(s) host:
+
+    Configurator process:
+        Set gHost_Reboot[hostRef] = True
+        (Note, we only reboot servers)
+        
+    Resource threads:
+        Complete their work
+        if the current gHost is rebooting
+            Save their current resource state
+            Set each of their host connection objects to None
+            Set their resource state to Rebooting
+        
+    Configurator process:
+        When all resources for rebooting hosts are in Rebooting state
+        Reboot the host
+        Clear gHost reboot flag
+        
+    Resource threads:
+        Upon noticing clearing of gHost reboot flag
+        Move back to saved state
+        Host commands loop on connecting to host
 
 """
-
 
 class Configurator:
 
@@ -919,6 +1000,13 @@ class Configurator:
     mainTestProcess = None                      # Spawned from THE main thread (in startATestRunProcess)
     perHostResourceManagementProcesses = []     # Spawned from the above process (in startAConfiguratorProcessesPerHost)
     resourceThreads = []                        # Spawned from the above processes (in startAllConfiguratorThreads)
+    hostConnections = []                        # Per host, per thread Paramiko connection
+    
+    # These are per-host, per-thread connection objects 
+    hostConnection = None
+    exportFSConnections = []
+    importFSConnections = []
+    fsUserConnections = []
 
     # These are set by entries in the nfsTest.conf file. They control the size and shape
     # of the configuration being tested and the rate at which it operates
@@ -932,11 +1020,59 @@ class Configurator:
     transitionsPerImportFS = None
     transitionsPerFSUser = None
     
-    def talkToHost(hostConnection, hostRef, command):
+    # Wait for all applicable state machines to be in "Rebooting" state
+    def waitForAllRebooting(hostRef):
     
-        logging.info(f"Execute on {gHost_Name[hostRef]}; {command}")
+        notRebootingCount = 1
+        while notRebootingCount > 0:
+        
+            notRebootingCount = 0
+        
+            if gHost_State[hostRef] != "Rebooting":
+                notRebootingCount += 1
+                
+            for exportFSRef in range(len(gExportFS_RowStatus)):
+                if (gExportFS_gHost_Ref[exportFSRef] == hostRef) and \
+                   (gExportFS_State[exportFSRef] != "Rebooting"):
+                    notRebootingCount += 1
+                    
+            if notRebootingCount > 0:
+                time.sleep(2)
 
-        (i, o, e) = hostConnection.exec_command(command)
+    # Do this during a reboot
+    def resetAllHostConnections():
+    
+        for hostConnRef in range(len(Configurator.hostConnections)):
+            Configurator.hostConnections[hostConnRef] = None
+    
+    #
+    # Keep trying to connect to the host if necessary and then communicate with it
+    #
+    def talkToHost(hostConnRef, hostRef, command):
+
+        # If there's no active host connection keep trying to get one
+        while Configurator.hostConnections[hostConnRef] is None:
+
+            logging.info(f"Trying to connect to {gHost_Name[hostRef]} using {hostConnRef}; {command}")
+    
+            try:
+
+                tempConnection = paramiko.client.SSHClient()
+                tempConnection.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                tempConnection.connect(gHost_IP[hostRef], username = gUsername[0], password = gPassword[0])
+                
+                Configurator.hostConnections[hostConnRef] = tempConnection
+
+            except Exception as e:
+            
+                MasterLock.unlock()
+            
+                time.sleep(5)
+                
+                MasterLock.lock()
+            
+        # We're in - talk...
+        (i, o, e) = Configurator.hostConnections[hostConnRef].exec_command(command)
 
         retcode = o.channel.recv_exit_status()
         
@@ -964,23 +1100,23 @@ class Configurator:
 
             gActivatorState[0] = "Waiting for a command error to be investigated - see nfsTest.log"
             
-            time.sleep(10000)
+            time.sleep(100000)
             
         return (o.read().decode())
 
     def calculateStatistics():
     
-        startTime = time.time()
-
         gHostInactive[0] = gHost_State.count("Inactive")
         gHostActivating[0] = gHost_State.count("Activating")
         gHostActive[0] = gHost_State.count("Active")
         gHostDeactivating[0] = gHost_State.count("Deactivating")
+        gHostRebooting[0] = gHost_State.count("Rebooting")
     
         gExportFSInactive[0] = gExportFS_State.count("Inactive")
         gExportFSActivating[0] = gExportFS_State.count("Activating")
         gExportFSActive[0] = gExportFS_State.count("Active")
         gExportFSDeactivating[0] = gExportFS_State.count("Deactivating")
+        gExportFSRebooting[0] = gExportFS_State.count("Rebooting")
     
         gImportFSInactive[0] = gImportFS_State.count("Inactive")
         gImportFSActivating[0] = gImportFS_State.count("Activating")
@@ -996,8 +1132,7 @@ class Configurator:
         gAllActivating[0] = gHostActivating[0] + gExportFSActivating[0] + gImportFSActivating[0] + gFSUserActivating[0]
         gAllActive[0] = gHostActive[0] + gExportFSActive[0] + gImportFSActive[0] + gFSUserActive[0]
         gAllDeactivating[0] = gHostDeactivating[0] + gExportFSDeactivating[0] + gImportFSDeactivating[0] + gFSUserDeactivating[0]
-        
-        gConfigStatsDelta[0] = time.time() - startTime
+        gAllRebooting[0] = gHostRebooting[0] + gExportFSRebooting[0]        
         
         return
             
@@ -1012,6 +1147,7 @@ class Configurator:
         displayLines += " Activating         %4d         %4d         %4d         %4d \n" % (gHostActivating[0], gExportFSActivating[0], gImportFSActivating[0], gFSUserActivating[0])
         displayLines += " Active             %4d         %4d         %4d         %4d \n" % (gHostActive[0], gExportFSActive[0], gImportFSActive[0], gFSUserActive[0])
         displayLines += " Deactivating       %4d         %4d         %4d         %4d \n" % (gHostDeactivating[0], gExportFSDeactivating[0], gImportFSDeactivating[0], gFSUserDeactivating[0])
+        displayLines += " Rebooting          %4d         %4d         %4d         %4d \n" % (gHostRebooting[0], gExportFSRebooting[0], 0, 0)
         #displayLines += " Disabling          %4d         %4d         %4d         %4d \n" % (gHostDisabling[0], gExportFSDisabling[0], gImportFSDisabling[0], gFSUserDisabling[0])
         #displayLines += " Disabled           %4d         %4d         %4d         %4d \n" % (gHostDisabled[0], gExportFSDisabled[0], gImportFSDisabled[0], gFSUserDisabled[0])
         displayLines += " \n"
@@ -1020,15 +1156,21 @@ class Configurator:
         displayLines += " -------          ----          -----    --------   --------   ------   --------\n"
         
         for hostRef in range(len(gHost_RowStatus)):
-            displayLines += "%8s      %8s   %12s        %4d       %4d     %4d       %4d \n" % (gHost_Name[hostRef], \
-                                                                                         gHost_Role[hostRef], \
-                                                                                         gHost_State[hostRef], \
-                                                                                         gHost_ExportFSUseCount[hostRef], \
-                                                                                         gHost_ImportFSUseCount[hostRef], \
-                                                                                         gHost_FSUserUseCount[hostRef], \
-                                                                                         gHost_IOCount[hostRef])
+            if hostRef == 0:
+
+                displayLines += "%8s      %8s \n" % (gHost_Name[hostRef], gHost_Role[hostRef])
+            
+            else:
+            
+                displayLines += "%8s      %8s   %12s        %4d       %4d     %4d       %4d \n" % (gHost_Name[hostRef], \
+                                                                                             gHost_Role[hostRef], \
+                                                                                             gHost_State[hostRef], \
+                                                                                             gHost_ExportFSUseCount[hostRef], \
+                                                                                             gHost_ImportFSUseCount[hostRef], \
+                                                                                             gHost_FSUserUseCount[hostRef], \
+                                                                                             gHost_IOCount[hostRef])
         displayLines += " \n"
-        displayLines += f" Display generation time = {int(gConfigStatsDelta[0] * 1000)} ms; host ssh connections: {gConnectionsMadeCount[0]} made of {gConnectionsNeededCount[0]} \n"
+        displayLines += f" Display generation time = {int((time.time() - gDisplayGenerationTime[0]) * 1000)} ms \n"
         
         return (displayLines)
     
@@ -1043,6 +1185,8 @@ class Configurator:
         # <End of thread>
 
     def defineAllResourceControlRows():
+    
+        # gHost rows already exist...
     
         # Make all possible, legal export FS rows
         for hostRef in range(1, len(gHost_RowStatus)):
@@ -1096,36 +1240,36 @@ class Configurator:
         # Start a manage host thread
         Configurator.resourceThreads.append(Thread(target = Configurator.manageHost, \
                                              name = gHost_Name[hostRef], \
-                                             args = [hostRef,]))
+                                             args = [hostRef, len(Configurator.hostConnections)]))
+        Configurator.hostConnections.append(None)
         Configurator.resourceThreads[-1].start()
-        gConnectionsNeededCount[0] += 1
 
         # Iterate over export FS rows that cite this thread's host
         for exportFSRef in range(len(gExportFS_RowStatus)):
             if gExportFS_gHost_Ref[exportFSRef] == hostRef:
                 Configurator.resourceThreads.append(Thread(target = Configurator.manageExportFS, \
                                                      name = gExportFS_Name[exportFSRef], \
-                                                     args = [exportFSRef,]))
+                                                     args = [exportFSRef, len(Configurator.hostConnections)]))
+                Configurator.hostConnections.append(None)
                 Configurator.resourceThreads[-1].start()
-                gConnectionsNeededCount[0] += 1
 
         # Iterate over import FS rows that cite this thread's host
         for importFSRef in range(len(gImportFS_RowStatus)):
             if gImportFS_gHost_Ref[importFSRef] == hostRef:
                 Configurator.resourceThreads.append(Thread(target = Configurator.manageImportFS, \
                                                      name = gImportFS_Name[importFSRef], \
-                                                     args = [importFSRef,]))
+                                                     args = [importFSRef, len(Configurator.hostConnections)]))
+                Configurator.hostConnections.append(None)
                 Configurator.resourceThreads[-1].start()
-                gConnectionsNeededCount[0] += 1
 
         # Iterate over FS user rows that cite this thread's host
         for fsUserRef in range(len(gFSUser_RowStatus)):
             if gFSUser_gHost_Ref[fsUserRef] == hostRef:
                 Configurator.resourceThreads.append(Thread(target = Configurator.manageFSUser, \
                                                      name = gFSUser_Name[fsUserRef], \
-                                                     args = [fsUserRef,]))
+                                                     args = [fsUserRef, len(Configurator.hostConnections)]))
+                Configurator.hostConnections.append(None)
                 Configurator.resourceThreads[-1].start()
-                gConnectionsNeededCount[0] += 1
 
         MasterLock.unlock()
         
@@ -1134,61 +1278,53 @@ class Configurator:
     def activator():
 
         #
-        # A way to slowly, randomly transition the state machines to Active or Inactive
+        # A way to slowly, randomly transition the state machine states
         #
         def randomTransitionChain(currentState, nextState):
         
-            MasterLock.lock()
             for i in range(Configurator.transitionsPerHost):
                 hostRef = random.randrange(1, len(gHost_RowStatus))
                 if gHost_State[hostRef] == currentState:
                     gHost_State[hostRef] = nextState
-            MasterLock.unlock()
-            time.sleep(Configurator.secondsPerStateTransition)
 
-            MasterLock.lock()
             for i in range(Configurator.transitionsPerExportFS):
                 exportFSRef = random.randrange(len(gExportFS_RowStatus))
                 if gExportFS_State[exportFSRef] == currentState:
                     gExportFS_State[exportFSRef] = nextState
-            MasterLock.unlock()
-            time.sleep(Configurator.secondsPerStateTransition)
 
-            MasterLock.lock()
             for i in range(Configurator.transitionsPerImportFS):
                 importFSRef = random.randrange(len(gImportFS_RowStatus))
                 if gImportFS_State[importFSRef] == currentState:
                     gImportFS_State[importFSRef] = nextState
-            MasterLock.unlock()
-            time.sleep(Configurator.secondsPerStateTransition)
 
-            MasterLock.lock()
             for i in range(Configurator.transitionsPerFSUser):
                 fsUserRef = random.randrange(len(gFSUser_RowStatus))
                 if gFSUser_State[fsUserRef] == currentState:
                     gFSUser_State[fsUserRef] = nextState
-            MasterLock.unlock()
-            time.sleep(Configurator.secondsPerStateTransition)
             
             return
 
-        while (UI.lastCommand != "exit") or (gAllActive[0] != 0):
+        while True:
+        
+            MasterLock.lock()
         
             if gActivatorState[0] == "Activate randomly":
             
                 randomTransitionChain("Inactive", "Activating")
 
-            elif (gActivatorState[0] == "Deactivate randomly") or \
-                 (gActivatorState[0] == "Stop all activity"):
+            elif (gActivatorState[0] == "Deactivate randomly"):
 
                 randomTransitionChain("Active", "Deactivating")
                 
             elif gActivatorState[0] == "Swap host #2's role":
             
-                time.sleep(Configurator.secondsPerStateTransition * 5)
-                
-                MasterLock.lock()
-                
+                #
+                # The swap code is here for now because we can't have the activator
+                # operating on the host we are swapping roles on. 
+                #
+                # This code needs to work like the "reboot1" command - set a flag in
+                # gHost and go from there.
+                #
                 if gHost_State[2] == "Active":
                 
                     # Set host #2 deactivating and
@@ -1200,7 +1336,7 @@ class Configurator:
                         time.sleep(1)
                         MasterLock.lock()
                         
-                    # Leave above locked!
+                    # Leave above in locked state!
                         
                     # Sleeps are for looks in the UI
                     time.sleep(1)
@@ -1229,21 +1365,26 @@ class Configurator:
                     else:
                         gHost_Role[2] = "Client"
                         
-                gActivatorState[0] = "Activate randomly"
+                    time.sleep(1)
+                        
+                    gActivatorState[0] = "Activate randomly"
                 
-                MasterLock.unlock()
-
             elif gActivatorState[0].startswith("Waiting"):
 
+                MasterLock.unlock()
                 time.sleep(1)
+                MasterLock.lock()
                 
             else:
             
                 print (gActivatorState[0])
                 x = 1/0     # Invalid activator state                 
                 
+            MasterLock.unlock()
+            
+            time.sleep(3)
+                
         return
-
 
     #
     # The operations below move the host, export and importfile systems, and the user state machines
@@ -1257,32 +1398,32 @@ class Configurator:
     # gImportFS     (per import)        FSUserUseCount
     # gFSUser
     
-    # Keep the given host busy as the host type set initially by nfsTest.conf (server or client)
-    def manageHost(hostRef):
+    # The code runs the host through its states but does little otherwise
+    def manageHost(hostRef, hostConnRef):
     
-        # Paramiko isn't thread safe so give it its own thread=local storage
-        local = threading.local()
-        local.hostConnection = None
-
-        while True:
+        while not gAllStop[0]:
         
             MasterLock.lock()
         
             # If activating a server
             if gHost_Role[hostRef] == "Server":
+
+                # Handle a reboot for this server host
+                if gHost_Reboot[hostRef]:
+                
+                    gHost_PrevState[hostRef] = gHost_State[hostRef]
+                    gHost_State[hostRef] = "Rebooting"
+                    Configurator.resetAllHostConnections()
+                    while gHost_Reboot[hostRef]:
+                        MasterLock.unlock()
+                        time.sleep(5)
+                        MasterLock.lock()
+                    gHost_State[hostRef] = gHost_PrevState[hostRef]
             
-                if gHost_State[hostRef] == "Activating":
+                elif gHost_State[hostRef] == "Activating":
             
                     logging.info(f"Activate name = {gHost_Name[hostRef]}; role = {gHost_Role[hostRef]}; state = {gHost_State[hostRef]}")
 
-                    # Make a host connection object once if needed
-                    if local.hostConnection is None:
-                        local.hostConnection = paramiko.client.SSHClient()
-                        local.hostConnection.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                        local.hostConnection.connect(gHost_IP[hostRef], username = gUsername[0], password = gPassword[0])
-                        gConnectionsMadeCount[0] += 1
-                        time.sleep(0.2)
-            
                     gHost_State[hostRef] = "Active"
                     
                 # If an active server, do nothing
@@ -1315,14 +1456,6 @@ class Configurator:
             
                     logging.info(f"Activate name = {gHost_Name[hostRef]}; role = {gHost_Role[hostRef]}; state = {gHost_State[hostRef]}")
 
-                    # Make a host connection object once if needed
-                    if local.hostConnection is None:
-                        local.hostConnection = paramiko.client.SSHClient()
-                        local.hostConnection.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                        local.hostConnection.connect(gHost_IP[hostRef], username = gUsername[0], password = gPassword[0])
-                        gConnectionsMadeCount[0] += 1
-                        time.sleep(0.2)
-            
                     gHost_State[hostRef] = "Active"
                     
                 # If an active client, do nothing
@@ -1353,55 +1486,65 @@ class Configurator:
             MasterLock.unlock()
         
             time.sleep(Configurator.secondsPerStateTransition)
-        
+            
+        time.sleep(100000)
+
     # Create and export a FS on the host
-    def manageExportFS(exportFSRef):
+    def manageExportFS(exportFSRef, hostConnRef):
     
         serverHostRef = gExportFS_gHost_Ref[exportFSRef]
 
-        # Paramiko isn't thread safe so give it its own thread=local storage
-        local = threading.local()
-        local.hostConnection = None
-
         def createExportFS():
         
-            Configurator.talkToHost(local.hostConnection, serverHostRef, \
+            Configurator.talkToHost(hostConnRef, serverHostRef, \
                 f"echo {gPassword[0]} | sudo -S mkdir -p /var/nfsTest/{gExportFS_Name[exportFSRef]}")
-            Configurator.talkToHost(local.hostConnection, serverHostRef, \
+            Configurator.talkToHost(hostConnRef, serverHostRef, \
                 f"echo {gPassword[0]} | sudo -S chown -R nobody:nogroup /var/nfsTest")
                 
-            Configurator.talkToHost(local.hostConnection, serverHostRef, \
+            Configurator.talkToHost(hostConnRef, serverHostRef, \
                 f"echo {gPassword[0]} | sudo -S ./appendALine /etc/exports '/var/nfsTest/{gExportFS_Name[exportFSRef]} *(rw,sync,no_subtree_check)'")
 
-            Configurator.talkToHost(local.hostConnection, serverHostRef, \
+            Configurator.talkToHost(hostConnRef, serverHostRef, \
                 f"echo {gPassword[0]} | sudo -S systemctl restart nfs-kernel-server")
                 
             return
 
         def destroyExportFS():
         
-            Configurator.talkToHost(local.hostConnection, serverHostRef, \
+            Configurator.talkToHost(hostConnRef, serverHostRef, \
                 f"echo {gPassword[0]} | sudo -S ./removeALine /etc/exports '/var/nfsTest/{gExportFS_Name[exportFSRef]} *(rw,sync,no_subtree_check)'")
 
-            Configurator.talkToHost(local.hostConnection, serverHostRef, \
+            Configurator.talkToHost(hostConnRef, serverHostRef, \
                 f"echo {gPassword[0]} | sudo -S systemctl restart nfs-kernel-server")
                 
-            Configurator.talkToHost(local.hostConnection, serverHostRef, \
+            Configurator.talkToHost(hostConnRef, serverHostRef, \
                 f"echo {gPassword[0]} | sudo -S rm -rf /var/nfsTest/{gExportFS_Name[exportFSRef]}")
                 
             return
 
         # ExportFS actions
-        while True:
+        while not gAllStop[0]:
 
             MasterLock.lock()
 
             # If this exported FS belongs to a host that's a server type at this time
             if gHost_Role[serverHostRef] == "Server":
             
+                # Handle a reboot for this server host
+                if gHost_Reboot[serverHostRef]:
+                
+                    gExportFS_PrevState[exportFSRef] = gExportFS_State[exportFSRef]
+                    gExportFS_State[exportFSRef] = "Rebooting"
+                    Configurator.resetAllHostConnections()
+                    while gHost_Reboot[serverHostRef]:
+                        MasterLock.unlock()
+                        time.sleep(5)
+                        MasterLock.lock()
+                    gExportFS_State[exportFSRef] = gExportFS_PrevState[exportFSRef]
+            
                 # Directed deactivation of a server host!!
                 # If host is being deactivated and the export FS is unused deactivate it
-                if (gHost_State[serverHostRef] == "Deactivating") and \
+                elif (gHost_State[serverHostRef] == "Deactivating") and \
                    (gExportFS_State[exportFSRef] == "Active") and \
                    (gExportFS_ImportFSUseCount[exportFSRef] == 0):
                    
@@ -1419,14 +1562,6 @@ class Configurator:
                     # Make and export the FS
                     logging.info(f"Activate Export FS #{exportFSRef}; host = {gHost_Name[serverHostRef]}; name = {gExportFS_Name[exportFSRef]}; state = {gExportFS_State[exportFSRef]}")
                     
-                    # Make a host connection object once if needed
-                    if local.hostConnection is None:
-                        local.hostConnection = paramiko.client.SSHClient()
-                        local.hostConnection.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                        local.hostConnection.connect(gHost_IP[serverHostRef], username = gUsername[0], password = gPassword[0])
-                        gConnectionsMadeCount[0] += 1
-                        time.sleep(0.2)
-            
                     if gSMNFSFunctionsEnabled[0]:
                         createExportFS()
 
@@ -1471,31 +1606,29 @@ class Configurator:
             MasterLock.unlock()
     
             time.sleep(Configurator.secondsPerStateTransition)
-                
-    def manageImportFS(importFSRef):
+            
+        time.sleep(100000)
+        
+    def manageImportFS(importFSRef, hostConnRef):
 
         # Get refs of who we are using
         clientHostRef = gImportFS_gHost_Ref[importFSRef]
         exportFSRef = gImportFS_gExportFS_Ref[importFSRef]
         serverHostRef = gExportFS_gHost_Ref[exportFSRef]
     
-        # Paramiko isn't thread safe so give it its own thread=local storage
-        local = threading.local()
-        local.hostConnection = None
-
         def createImportFS():
         
-            Configurator.talkToHost(local.hostConnection, clientHostRef, \
+            Configurator.talkToHost(hostConnRef, clientHostRef, \
                 f"echo {gPassword[0]} | sudo -S mkdir -p /nfsTest/{gImportFS_Name[importFSRef]}")
                 
             # Mount the !exported FS! as the !imported FS!
-            Configurator.talkToHost(local.hostConnection, clientHostRef, \
+            Configurator.talkToHost(hostConnRef, clientHostRef, \
                 f"echo {gPassword[0]} | sudo -S mount -o actimeo=5 {gHost_IP[gExportFS_gHost_Ref[exportFSRef]]}:/var/nfsTest/{gExportFS_Name[exportFSRef]} /nfsTest/{gImportFS_Name[importFSRef]}")
 
-            Configurator.talkToHost(local.hostConnection, clientHostRef, \
+            Configurator.talkToHost(hostConnRef, clientHostRef, \
                 f"echo {gPassword[0]} | sudo -S ./appendALine /etc/fstab '{gHost_IP[gExportFS_gHost_Ref[exportFSRef]]}:/var/nfsTest/{gExportFS_Name[exportFSRef]}  {gImportFS_Name[importFSRef]}  nfs auto,nofail,noatime,nolock,intr,tcp,actimeo=5 0 0'")
 
-            Configurator.talkToHost(local.hostConnection, clientHostRef, \
+            Configurator.talkToHost(hostConnRef, clientHostRef, \
                 f"echo {gPassword[0]} | sudo -S mkdir -p /var/ioEngine")
                 
             return
@@ -1503,19 +1636,19 @@ class Configurator:
         def destroyImportFS():
         
             # Un-mount the !imported! FS
-            Configurator.talkToHost(local.hostConnection, clientHostRef, \
+            Configurator.talkToHost(hostConnRef, clientHostRef, \
                 f"echo {gPassword[0]} | sudo -S umount /nfsTest/{gImportFS_Name[importFSRef]}")
 
-            Configurator.talkToHost(local.hostConnection, clientHostRef, \
+            Configurator.talkToHost(hostConnRef, clientHostRef, \
                 f"echo {gPassword[0]} | sudo -S ./removeALine /etc/fstab '{gHost_IP[gExportFS_gHost_Ref[exportFSRef]]}:/var/nfsTest/{gExportFS_Name[exportFSRef]}  {gImportFS_Name[importFSRef]}'")
 
-            Configurator.talkToHost(local.hostConnection, clientHostRef, \
+            Configurator.talkToHost(hostConnRef, clientHostRef, \
                 f"echo {gPassword[0]} | sudo -S rm -rf /nfsTest/{gImportFS_Name[importFSRef]}")
                 
             return
     
         # ImportFS actions
-        while True:
+        while not gAllStop[0]:
         
             MasterLock.lock()
             
@@ -1548,14 +1681,6 @@ class Configurator:
                     # Mount an export FS
                     logging.info(f"Activate Import FS #{importFSRef}; name = {gImportFS_Name[importFSRef]}; state = {gImportFS_State[importFSRef]}")
                     
-                    # Make a host connection object once if needed
-                    if local.hostConnection is None:
-                        local.hostConnection = paramiko.client.SSHClient()
-                        local.hostConnection.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                        local.hostConnection.connect(gHost_IP[clientHostRef], username = gUsername[0], password = gPassword[0])
-                        gConnectionsMadeCount[0] += 1
-                        time.sleep(0.2)
-            
                     if gSMNFSFunctionsEnabled[0]:
                         createImportFS()
 
@@ -1602,8 +1727,10 @@ class Configurator:
             MasterLock.unlock()
     
             time.sleep(Configurator.secondsPerStateTransition)
-        
-    def manageFSUser(fsUserRef):
+            
+        time.sleep(100000)
+
+    def manageFSUser(fsUserRef, hostConnRef):
     
         # Get refs of who we are using from the import FS (we are running on the importing host)
         importFSRef = gFSUser_gImportFS_Ref[fsUserRef]
@@ -1611,12 +1738,8 @@ class Configurator:
         clientHostRef = gImportFS_gHost_Ref[importFSRef]    # The host we are running on
         serverHostRef = gExportFS_gHost_Ref[exportFSRef]    # The host our exported FS is running on
         
-        # Paramiko isn't thread safe so give it its own thread=local storage
-        local = threading.local()
-        local.hostConnection = None
-
         # FSUser actions
-        while True:
+        while not gAllStop[0]:
         
             MasterLock.lock()
 
@@ -1644,14 +1767,6 @@ class Configurator:
                     # Start a file system user thread
                     logging.info(f"Activate FS user #{fsUserRef}; name = {gFSUser_Name[fsUserRef]}; state = {gFSUser_State[fsUserRef]}")
                     
-                    # Make a host connection object once if needed
-                    if local.hostConnection is None:
-                        local.hostConnection = paramiko.client.SSHClient()
-                        local.hostConnection.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                        local.hostConnection.connect(gHost_IP[clientHostRef], username = gUsername[0], password = gPassword[0])
-                        gConnectionsMadeCount[0] += 1
-                        time.sleep(0.2)
-            
                     # Track activity
                     gHost_FSUserUseCount[clientHostRef] += 1
                     gImportFS_FSUserUseCount[importFSRef] += 1
@@ -1671,7 +1786,7 @@ class Configurator:
                     
                     logging.info(f"Use FS user #{fsUserRef}; name = {gFSUser_Name[fsUserRef]}; state = {gFSUser_State[fsUserRef]}")
                     
-                    Configurator.talkToHost(local.hostConnection, clientHostRef, f"echo {gPassword[0]} | sudo -S ./ioEngine --rt=15 {destPath}/0x{fileNum}")
+                    Configurator.talkToHost(hostConnRef, clientHostRef, f"echo {gPassword[0]} | sudo -S ./ioEngine --rt=15 {destPath}/0x{fileNum}")
                     
                     MasterLock.lock()
                     
@@ -1705,6 +1820,8 @@ class Configurator:
             MasterLock.unlock()
     
             time.sleep(Configurator.secondsPerStateTransition)
+            
+        time.sleep(100000)
 
 
 #
@@ -1734,13 +1851,18 @@ if __name__ == "__main__":
     Platform.processConfFile()
     
     # Connect to just localhost to start with
-    HostComm.connectToHostRefList(hostRefList = (0,))
+    print ("")
+    HostComm.addAHostConnection(0)
     
     # Verify pingability to all test hosts from the control host
     Platform.pingAllFromLocalhost()
 
-    # Connect to localhost and all test hosts
-    HostComm.connectToHostRefList(hostRefList = range(0, len(gHost_RowStatus)))
+    # Now connect to all the test hosts
+    print ("")
+    for hostRef in range(1, len(gHost_RowStatus)):
+        HostComm.addAHostConnection(hostRef)
+        
+    time.sleep(1.5)
     
     # Present the menu and process user input - never return
     UI.coreInteractiveLogic()

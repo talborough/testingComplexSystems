@@ -1,0 +1,16 @@
+#!/usr/bin/python3
+
+#
+# Append a line to a file:
+#
+#   ./appendALine <file> <line>
+#
+
+import sys
+import io
+
+fd = open (sys.argv[1], "a")
+fd.write(sys.argv[2] + "\n")
+fd.close
+
+exit (0)

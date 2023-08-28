@@ -13,9 +13,12 @@ defineUnary     gPassword               None        # To go with the username ab
 
 defineUnary     gStopAll                False       # Shutdown of all bits and pieces
 defineUnary     gStartTime              0           # Overall start time
+defineUnary     gDisplayGenerationTime  0           # Display generation time - includes a lock
 defineUnary     gIOEngineNumber         0           # Unique ioEngine file names
 defineUnary     gActivatorState         None        # Overall control of all the state machines
-defineUnary     gSMNFSFunctionsEnabled  None        # Run state machines with / without NFS actions
+defineUnary     gSMNFSFunctionsEnabled  False       # Run state machines with / without NFS actions
+
+defineUnary     gAllStop                False       # Something happened - stop as fast as possisble
 
 #
 # Manage various entities - we always have hosts
@@ -27,6 +30,8 @@ defineColumn    gHost_Hostname          None        # The hosts's "hostname" fro
 defineColumn    gHost_Name              None        # The hosts's name in 'host #n' format
 defineColumn    gHost_Role              None        # A test host can be a control, server, client or unused
 defineColumn    gHost_State             ""          # Test hosts (only) can be inactive, activating, etc.
+defineColumn    gHost_PrevState         ""          # Save to here when rebooting
+defineColumn    gHost_Reboot            False       # Set to trigger reboot of host
 defineColumn    gHost_ExportFSUseCount  0
 defineColumn    gHost_ImportFSUseCount  0
 defineColumn    gHost_FSUserUseCount    0
@@ -41,6 +46,7 @@ defineTable     gExportFS                           # An exported file system
 defineColumn    gExportFS_gHost_Ref                 # The host the exported FS is on
 defineColumn    gExportFS_Name                      # The exported file system name on the host
 defineColumn    gExportFS_State         "Inactive"  # The current state of the exported FS
+defineColumn    gExportFS_PrevState     "Inactive"  # The previous state of the exported FS
 defineColumn    gExportFS_ImportFSUseCount 0        # The number of mounted FS on this exported FS
 defineColumn    gExportFS_RowStatus     None
 endTable
@@ -73,14 +79,13 @@ endTable
 #
 # Configurator statistics
 #
-defineUnary     gConfigStatsDelta       0           # Elapsed time in Configurator.calculateStatistics
-
 defineUnary     gHostInactive           0
 defineUnary     gHostActivating         0
 defineUnary     gHostActive             0
 defineUnary     gHostDeactivating       0
 defineUnary     gHostDisabling          0
 defineUnary     gHostDisabled           0
+defineUnary     gHostRebooting          0
 
 defineUnary     gExportFSInactive       0
 defineUnary     gExportFSActivating     0
@@ -88,6 +93,7 @@ defineUnary     gExportFSActive         0
 defineUnary     gExportFSDeactivating   0
 defineUnary     gExportFSDisabling      0
 defineUnary     gExportFSDisabled       0
+defineUnary     gExportFSRebooting      0
 
 defineUnary     gImportFSInactive       0
 defineUnary     gImportFSActivating     0
@@ -109,7 +115,5 @@ defineUnary     gAllActive              0
 defineUnary     gAllDeactivating        0
 defineUnary     gAllDisabling           0
 defineUnary     gAllDisabled            0
-
-defineUnary     gConnectionsNeededCount 0
-defineUnary     gConnectionsMadeCount   0
+defineUnary     gAllRebooting           0
 

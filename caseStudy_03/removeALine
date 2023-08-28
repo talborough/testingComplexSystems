@@ -1,0 +1,21 @@
+#!/usr/bin/python3
+
+#
+# Remove line(s) from a file:
+#
+#   ./removeALine <file> <line fragment>
+#
+
+import sys
+import io
+
+fd = open (sys.argv[1], "r")
+allLines = fd.read().splitlines()
+fd.close()
+fd = open (sys.argv[1], "w")
+for line in allLines:
+    if sys.argv[2] not in line:
+        fd.write(line + "\n")
+fd.close()
+
+exit (0)

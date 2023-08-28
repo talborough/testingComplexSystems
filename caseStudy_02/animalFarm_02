@@ -68,6 +68,10 @@ class MasterLock:
         return
 
 
+#
+# This supports extracting in-line text blocks at run time.
+# It's good for templates and "help" blocks.
+#
 class InLineText:
 
     codeLines = []

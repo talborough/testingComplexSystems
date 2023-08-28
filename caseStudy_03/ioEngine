@@ -1,0 +1,428 @@
+#!/usr/bin/python3
+
+import sys
+import io
+import os
+import time
+import numpy as np
+import getopt
+
+from threading import Thread
+
+
+#########################
+#
+# ioEngine - Do I/O to a file hoping to find some problems.
+#            See help at the end for its operation.
+#
+#########################
+
+#
+# Information from the command line
+#
+class UI:
+
+    stopTime = None                 # Cease operations and wrap up at this time
+    
+    filenameInBinary = None         # The binary value of the file name
+    filenameInHexString = None      # A 16-digit hex string representation of the above value
+    dataFileLocation = None         # Where to put the data file
+    
+    # A default run
+    runTime = 15
+    pauseTime = 0.01
+    bytesPerBlock = 1024
+    blocksPerRecord = 3
+    recordsPerFile = 10
+
+    # Save option values above and return (the one, file name) arg
+    def processArgs():
+    
+        try:
+            opts, args = getopt.getopt(sys.argv[1:], "h", ["help",
+                                                           "rt=",
+                                                           "pt=",
+                                                                 ])
+        except getopt.GetoptError as err:
+            print ("")
+            print(err)
+            print ("")
+            sys.exit(99)
+
+        for i in range(0, len(opts)):
+
+            if opts[i][0] in ("-h", "--help"):
+                print (InLineText.getText("Help"))
+                exit(99)
+
+            elif opts[i][0] == ("--rt"):
+                UI.runTime = int(opts[i][1])
+
+            elif opts[i][0] == ("--pt"):
+                UI.pauseTime = float(opts[i][1])
+
+            else:
+                print ("")
+                print (f"Invalid option {opts[i][0]} -- see help")
+                print ("")
+                exit(99)
+                
+        if  len(args) != 1:
+            print ("")
+            print ("One required data file name missing")
+            print ("")
+            exit(99)
+
+        # Assume no path given in file specification
+        UI.dataFileLocation = ""
+        # And file is in default directory
+        UI.filenameInHexString = args[0]
+
+        # Split off maybe path
+        twoBits = args[0].rsplit("/", 1)
+        if len(twoBits) == 2:
+            UI.dataFileLocation = twoBits[0] + "/"
+            UI.filenameInHexString = twoBits[1]
+            
+        # Validate file name - assume twoBits[0] is a valid path to the file
+        if UI.filenameInHexString[0:2] != "0x":
+            print ("")
+            print ("The filename argument must start with '0x'")
+            print ("")
+            exit (99)
+            
+        # Make 16-digit filename
+        UI.filenameInBinary = int(UI.filenameInHexString, 16)
+        UI.filenameInHexString = "0x%16.16x" % (UI.filenameInBinary)
+        
+        print ("")
+        print (f"Run time seconds = {UI.runTime}")
+        print (f"Pause time float seconds per I/O = {UI.pauseTime}")
+        print (f"Full data file spec = {UI.dataFileLocation + UI.filenameInHexString}" + ".ioedata")
+
+        print ('')
+        print (f"Bytes per block = {UI.bytesPerBlock}")
+        print (f"Blocks per record = {UI.blocksPerRecord}")
+        print (f"Records per file = {UI.recordsPerFile}")
+        print ("")
+
+        return
+        
+    
+#
+# Thread to print I/O counts to stdout. Counters only have one writer and the readers
+# below so they are thread "OK'ish".
+#
+class ManageStats:
+
+    writeStartCount = 0
+    writeEndCount = 0
+    readStartCount = 0
+    readEndCount = 0
+    
+    passCount = 0
+    
+    stopLoop = False
+
+    #
+    # Started on a thread to write status to stdout evey few seconds (only
+    # when run at the terminal)
+    #
+    def writeStats():
+    
+        # Figure stall amount    
+        thisIOCount = 0
+        lastIOCount = 0
+        lastIOTime = 0
+        stallTime = 0
+    
+        while not ManageStats.stopLoop:
+        
+            time.sleep(2.0)
+            
+            # Figure stall amount
+            thisIOCount = ManageStats.writeStartCount + ManageStats.readStartCount
+            if thisIOCount > lastIOCount:
+                stallTime = 0
+                lastIOTime = time.time()
+            else:
+                stallTime = time.time() - lastIOTime
+            lastIOCount = thisIOCount
+            
+            print ("\033[H\033[J")
+            
+            print (f"Run time left (-10 sec max after stop) = {int(UI.stopTime - time.time())}")
+            print ("")
+            print (f"Pass count = {ManageStats.passCount}")
+            print ("")
+            print (f"Stall time = {stallTime}")
+            print ("")
+            print (f"Write start count = {ManageStats.writeStartCount}")
+            print (f"Write stop count = {ManageStats.writeEndCount}")
+            print (f"Read start count = {ManageStats.readStartCount}")
+            print (f"Read stop count = {ManageStats.readEndCount}")
+            
+        return
+
+#
+# Handle in-line documentation/text (text in this source file
+#   can be extracted at run time and used for help or templates)
+#
+class InLineText:
+
+    codeLines = []
+
+    def getCodeLines():
+    
+        InLineText.codeLines = open(sys.argv[0], "r").read().splitlines()
+
+
+    def getText(tag, substitutionList = []):
+
+        lineRef = 0
+        harvestingText = False
+        harvestedText = ''
+
+        while lineRef <= len(InLineText.codeLines):
+
+            line = InLineText.codeLines[lineRef]
+            lineRef += 1
+
+            if (not harvestingText) and ('""" - ' in line):
+                indent = line.find('"""')
+                line = line[indent:]
+                line = line.replace('""" - ', "")
+                if line == tag:
+                    harvestingText = True
+                    
+            elif (not harvestingText) and (lineRef == len(InLineText.codeLines)):
+                print ("Can not find in-line text tag '%s'" % (tag))
+                x = 1/0
+
+            elif harvestingText and ('"""' in line):
+                return (harvestedText % (substitutionList))
+                
+            elif harvestingText:
+                harvestedText += line[indent:] + "\n"
+                
+
+if __name__ == "__main__":
+
+    statsThread = None
+
+    # Load in this program's code for in-line text processing
+    InLineText.getCodeLines()
+    
+    # Process command line args
+    UI.processArgs()
+
+    # Start using the command line args
+    UI.stopTime = time.time() + UI.runTime
+    
+    # Open I/O log file for write
+    lffd = open("/var/ioEngine/" + UI.filenameInHexString + ".ioelog", "w")
+    
+    # If running at a terminal start stats writer thread
+    if UI.dataFileLocation == "":
+        statsThread = Thread(target = ManageStats.writeStats, daemon = True)
+        statsThread.start()
+
+    passNumber = 0
+
+    while time.time() < UI.stopTime:
+    
+        # Do all the write I/O + verify per pass
+    
+        passNumber += 1
+        ManageStats.passCount = passNumber
+
+        #
+        # Write the file first
+        #
+        # Start the pass with the file open for write
+        dfd = io.open(UI.dataFileLocation + UI.filenameInHexString + ".ioedata", "wb", buffering = 0)
+
+        # Index through all records / blocks in the file
+        blockIndexInFile = 0
+        for recordIndexInFile in range(UI.recordsPerFile):
+
+            # Start with an empty record
+            recordData = np.array([], dtype = "uint64", copy = False)
+
+            # Fill this record with blocks
+            for blockIndex in range(UI.blocksPerRecord):
+            
+                # Create blocks in record with continuous block numbers
+                # Start with creating a 32 byte fragment to go in a block
+                blockFragment = np.array([UI.filenameInBinary, recordIndexInFile, blockIndexInFile, passNumber], dtype = "uint64", copy = False)
+            
+                # Size fragment up to a full block
+                block = np.resize(blockFragment, (int(UI.bytesPerBlock / 8)))
+            
+                # Add block to current record
+                recordData = np.concatenate([recordData, block], dtype = "uint64", axis = 0)
+
+                blockIndexInFile += 1
+
+            # Write the status record out
+            statusString = f"Write: recordIndex = {recordIndexInFile}; blockIndex = {recordData[2]}; passIndex = {recordData[3]} \n"
+            lffd.write(statusString)
+            
+            # Insert a data compare error if testing
+            # if blockIndexInFile == 6:
+            #     recordData[3] = 157
+                
+            ManageStats.writeStartCount += 1
+            recordData.tofile(dfd)
+            ManageStats.writeEndCount += 1
+            
+            time.sleep(UI.pauseTime)
+        
+        dfd.close()
+
+
+        #
+        # Now read and compare the file
+        #
+        # Start with a file open for read
+        dfd = io.open(UI.dataFileLocation + UI.filenameInHexString + ".ioedata", "rb", buffering = 0)
+
+        # Index through all records / blocks in the file
+        blockIndexInFile = 0
+        for recordIndexInFile in range(UI.recordsPerFile):
+
+            # Start with an empty template
+            recordTemplate = np.array([], dtype = "uint64", copy = False)
+
+            # Fill this template with blocks
+            for blockIndex in range(UI.blocksPerRecord):
+            
+                # Create blocks in record with continuous block numbers
+                # Start with creating a 32 byte fragment to go in a block
+                blockFragment = np.array([UI.filenameInBinary, recordIndexInFile, blockIndexInFile, passNumber], dtype = "uint64", copy = False)
+            
+                # Size fragment up to a full block
+                block = np.resize(blockFragment, (int(UI.bytesPerBlock / 8)))
+            
+                # Add block to current record
+                recordTemplate = np.concatenate([recordTemplate, block], dtype = "uint64", axis = 0)
+
+                blockIndexInFile += 1
+
+            # Log / get next record from the file sequentially
+            statusString = f"Read: recordIndex = {recordIndexInFile}; blockIndex = {recordTemplate[2]}; passIndex = {recordTemplate[3]} \n"
+            lffd.write(statusString)
+            
+            ManageStats.readStartCount += 1
+            recordData = np.fromfile(dfd, dtype = "uint64", count = int(UI.bytesPerBlock / 8) * UI.blocksPerRecord)
+            ManageStats.readEndCount += 1
+            
+            time.sleep(UI.pauseTime)
+            
+            if not np.array_equal(recordData, recordTemplate):
+
+                lffd.write("Data compare error: \n")
+                
+                lffd.write("Record in template: \n")
+                lffd.write(str(recordTemplate) + "\n")
+                lffd.write("Record in file: \n")
+                lffd.write(str(recordData) + "\n")
+                lffd.write("<EOF> \n")
+                
+                lffd.close()
+                os.rename("/var/ioEngine/" + UI.filenameInHexString + ".ioelog", "/var/ioEngine/" + UI.filenameInHexString + ".stop")
+                
+                print ("Data compare error: \n")
+                
+                print ("Record in template: \n")
+                print (str(recordTemplate) + "\n")
+                print ("Record in file: \n")
+                print (str(recordData) + "\n")
+
+                exit (1)
+
+        dfd.close()
+
+    lffd.truncate(0)
+    lffd.close()
+    
+    # If we are at a terminal stop the staats thread
+    if UI.dataFileLocation == "":
+        ManageStats.stopLoop = True
+        statsThread.join()
+        
+    exit (0)
+
+
+""" - Help
+
+ioEngine (Phase I) - Do and verify I/O to a file-oriented destination. This was developed 
+for testing nfs mounts but it can be used to doing I/O to any file-oriented destination. 
+
+It can be run by hand and, it is also designed to be run by a "test platform" that runs many 
+instances of it in a specific way and monitors if the instances complete normally or fail.
+
+When it runs it will indicate:
+
+    - Normal completion
+
+    - Completion because of failing I/O calls (not yet!!!)
+    
+    - Completion because of data compare errors
+    
+Files (descriptors) used:
+
+    dfd = Data file descriptor: Where the data thats written and read / verified goes - 
+        as specified on the command line.
+    <stdout> - Status file - written to the terminal to show progress when run from the terminal
+    <stdout> - Written to on (data compare) error
+    lffd - Written to on (data compare) error
+
+Example command line:
+
+    ./ioEngine <file path>/0x1234
+    
+    - <file path> can be any reachable destination on the host it's running on
+
+    - The hex filename can be any value between '0x0' and '0xffffffffffffffff' (uint64).
+    
+    - The filename re-formatted and made into a hex string, padded with leading zeroes, a 
+      "0x" is prepended and ".ioe" is appended to make the full file name.
+    
+    - The intent is that the hex filenames is unique and assigned by the "test platform" as
+      it starts multiple instances of the utility.
+    
+
+The default I/O operating parameters right now are:
+    
+    runTime = 15
+    pauseTime = 0.01
+    bytesPerBlock = 1024
+    blocksPerRecord = 3
+    recordsPerFile = 10
+    
+
+A status file is generated on the host it's running on and also printed to stdout, so it can also
+be logged when an error occurs:
+    
+    - /var/ioEngine/0x0000000000001234.status - Attributes of the last I/O attempted (work 
+      is underway to capture the error code in the case of a failure).
+    
+    - If the ".status" file length is zero the ioEngine instance completed normally.
+    
+    - If the filename extension is ".stop" a data compare error occurred and the contents of 
+      the status file contains informataion about the error.
+    
+
+Futures:
+
+    - Pass I/O operating parameters in on the command line. (--rt=nnn for run time so far)
+    
+    - Embed I/O operating parameters in the .ioe data file so it can be independently 
+      verified.
+    
+    - Add support for system failures to be detected, analyzed and reacted to.
+    
+    - Analyze the data corruption and provide an "od" command to dump it exactly.
+
+"""
