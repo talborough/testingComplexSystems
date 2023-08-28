@@ -764,12 +764,19 @@ class UI:
         # Process "start a test run" command
         elif command == "st":
 
-            gActivatorState[0] = "Activate randomly"
+            if Configurator.mainTestProcess is not None:
+                print ("")
+                print (" Can't run a test more than once")
+                print ("")
+                time.sleep(2)
+            else:
 
-            Configurator.mainTestProcess = Process(target = Configurator.startATestRunProcess, \
-                                                     name = "main test process", \
-                                                     args = ())
-            Configurator.mainTestProcess.start()
+                gActivatorState[0] = "Activate randomly"
+
+                Configurator.mainTestProcess = Process(target = Configurator.startATestRunProcess, \
+                                                         name = "main test process", \
+                                                         args = ())
+                Configurator.mainTestProcess.start()
 
 
         elif command == "swap2":
