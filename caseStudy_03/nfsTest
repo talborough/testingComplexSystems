@@ -766,12 +766,12 @@ class UI:
 
             if Configurator.mainTestProcess is not None:
                 print ("")
-                print (" Can't run a test more than once")
+                print (" Can't start a test run more than once")
                 print ("")
                 time.sleep(2)
             else:
 
-                gActivatorState[0] = "Activate randomly"
+                gActivatorState[0] = "Waiting"
 
                 Configurator.mainTestProcess = Process(target = Configurator.startATestRunProcess, \
                                                          name = "main test process", \
@@ -787,6 +787,7 @@ class UI:
                 time.sleep(2)
             else:
                 gActivatorState[0] = "Swap host #2's role"
+
 
         elif command == "reboot1":
         
@@ -828,7 +829,12 @@ class UI:
                 gHost_Reboot[1] = False
 
         
-        elif command == "et":
+        elif command == "sa":
+        
+            gActivatorState[0] = "Activate randomly"
+
+
+        elif command == "ea":
         
             gActivatorState[0] = "Deactivate randomly"
 
@@ -901,10 +907,10 @@ class UI:
             displayLines += " \n"
             displayLines += " dh / de / di / du = Dump hosts / exportFS / importFS / FSUser tables \n"
             
-            displayLines += " insw       = Install all necessary software packages on any host(s) \n"
-            displayLines += " cleanall   = Clean up all artifacts on all test host(s) no matter what \n"
-            displayLines += " ecmd       = Execute command(s) on any host(s) \n"
-            displayLines += " st / et    = Start / end testing \n"
+            displayLines += " insw          = Install all necessary software packages on any host(s) \n"
+            displayLines += " cleanall      = Clean up all artifacts on all test host(s) no matter what \n"
+            displayLines += " ecmd          = Execute command(s) on any host(s) \n"
+            displayLines += " st / sa / ea  = Start testing / start activation / end activation \n"
             displayLines += " swap2 / reboot1  = swap role of host #2 / reboot host #1 \n"
             displayLines += " \n"
                 
@@ -1329,9 +1335,6 @@ class Configurator:
                 # The swap code is here for now because we can't have the activator
                 # operating on the host we are swapping roles on. 
                 #
-                # This code needs to work like the "reboot1" command - set a flag in
-                # gHost and go from there.
-                #
                 if gHost_State[2] == "Active":
                 
                     # Set host #2 deactivating and
@@ -1661,17 +1664,16 @@ class Configurator:
             
             # If this import FS belongs to a host that's a client type at this time
             if gHost_Role[clientHostRef] == "Client":
-            
-                
-                # Directed deactivation of a client or server host!!
-                # If deactivating the client or server host and the import FS is active and unused, stop the import FS
+
+                # "Directed deactivation" (deactivate started by someone "Deactivating" host(s)) of a client or server host!!
+                # (and..) If deactivating the client or server host and the import FS is active and unused, stop the import FS
                 if ((gHost_State[clientHostRef] == "Deactivating") or \
                     (gHost_State[serverHostRef] == "Deactivating")) and \
                    (gImportFS_State[importFSRef] == "Active") and \
                    (gImportFS_FSUserUseCount[importFSRef] == 0):
                    
                     # Unmount an imported FS
-                    logging.info(f"Deactivate Import FS #{importFSRef}; name = {gImportFS_Name[importFSRef]}; state = {gImportFS_State[importFSRef]}")
+                    logging.info(f"Directed deactivate Import FS #{importFSRef}; name = {gImportFS_Name[importFSRef]}; state = {gImportFS_State[importFSRef]}")
                     
                     if gSMNFSFunctionsEnabled[0]:
                         destroyImportFS()
@@ -1707,7 +1709,7 @@ class Configurator:
                      (gImportFS_FSUserUseCount[importFSRef] == 0):
                
                     # Unmount an imported FS
-                    logging.info(f"Deactivate Import FS #{importFSRef}; name = {gImportFS_Name[importFSRef]}; state = {gImportFS_State[importFSRef]}")
+                    logging.info(f"Undirected deactivate Import FS #{importFSRef}; name = {gImportFS_Name[importFSRef]}; state = {gImportFS_State[importFSRef]}")
                     
                     if gSMNFSFunctionsEnabled[0]:
                         destroyImportFS()
