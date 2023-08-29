@@ -899,12 +899,6 @@ class UI:
             y = Color.WHITE
             displayLines += " Uptime: %d secs; Activator state: %s%s%s \n" % ((time.time() - gStartTime[0]), x, gActivatorState[0], y)
             
-            if (time.time() - gStartTime[0]) > 600:
-                print ("")
-                print ("Stopping after 10 minutes so we don't consume a lot disk space in nfsTest.log.")
-                print ("")
-                exit (0)
-            
             displayLines += " \n"
             displayLines += Configurator.generateStatisticsDisplay(displayLines)
             
@@ -927,6 +921,13 @@ class UI:
     
             # Print whole screen with one "print" (no flashing)
             print (displayLines)
+
+            if (time.time() - gStartTime[0]) > 1200:
+                print ("")
+                print ("Stopping after 20 minutes so we don't consume a lot disk space in nfsTest.log.")
+                print ("")
+                gAllStop[0] = True
+                time.sleep(100000)            
 
             # Clean the test hosts the first time through this code
             if UI.firstTime:
