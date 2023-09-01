@@ -63,3 +63,8 @@ functions. The dummy input arguments are of the form "_<column name>" where <col
 name> is the entire column name minus the table name. Mandatory and optional arguments 
 are supported with default values coming from the schema. No other inputs are  to be 
 considered.
+
+Finally:
+
+Can you alter the list variables to be in shared memory using the Python 
+"multiprocessing" library?
