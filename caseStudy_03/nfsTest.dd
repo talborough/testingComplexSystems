@@ -11,7 +11,6 @@
 defineUnary     gUsername               None        # Overall username with sudo privs
 defineUnary     gPassword               None        # To go with the username above
 
-defineUnary     gStopAll                False       # Shutdown of all bits and pieces
 defineUnary     gStartTime              0           # Overall start time
 defineUnary     gDisplayGenerationTime  0           # Display generation time - includes a lock
 defineUnary     gIOEngineNumber         0           # Unique ioEngine file names
