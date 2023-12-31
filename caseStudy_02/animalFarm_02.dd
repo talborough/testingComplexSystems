@@ -3,7 +3,7 @@
 #
 # To generate code:
 #
-#       ../gDS/gDSCodeGen animalFarm_02    >>>>>>> Produces animalFarm_02.py in the directory created by the repo.
+#       ../gDS/gDSCodeGen animalFarm_02    >>>>>>> Produces animalFarm_02.py in the default directory
 #
 # gCounty - The county a farm is in
 #

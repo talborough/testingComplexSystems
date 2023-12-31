@@ -664,15 +664,10 @@ class UI:
     # Service the updating of the terminal screen
     def serviceTerminal():
     
-        # Figure color of background count (most non-zero values go red here)
-        x = y = Color.WHITE
-        if UI.someBackgroundAlive():
-            x = Color.RED
-
         # Line 1 of header
         gScreenLines[0] = ("\033[H\033[J \n")
-        gScreenLines[0] += (" Uptime in seconds = %d; Background process count = %s%d%s" % \
-              (time.time() - gStartTime[0], x, UI.someBackgroundAlive(), y))
+        gScreenLines[0] += (" Uptime in seconds = %d;" % \
+              (time.time() - gStartTime[0]))
 
         # Line 2 of header
         # Figure color of speced background process counts
@@ -916,6 +911,13 @@ class UI:
 
 
 # Background workers
+#
+# gAnimal_RowStatus values:
+#
+#   ""      - Animal is available for use
+#   "xxx"   - Animal is in use for "xxx"
+#   None    - Animal is erased
+#
 class Background:
 
     # Get any animal of the given type with RowStatus = ""
@@ -955,10 +957,10 @@ class Background:
                 gAnimal_Produced[animalRef] += j
                 gTotalMilkCalculated[0] += j
 
-                MasterLock.unlock()
-                
                 gAnimal_RowStatus[animalRef] = ""
 
+                MasterLock.unlock()
+                
             time.sleep(1)
             
         return
@@ -1009,10 +1011,10 @@ class Background:
                 gAnimal_Produced[animalRef] += j
                 gTotalEggsCalculated[0] += j
 
-                MasterLock.unlock()
-                
                 gAnimal_RowStatus[animalRef] = ""
 
+                MasterLock.unlock()
+                
             time.sleep(1)
             
         return

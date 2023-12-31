@@ -1,0 +1,14 @@
+#
+# diff_em - Diff current "dev" <==> repo state
+#
+set -x
+diff $1 ~/testingComplexSystems/caseStudy_01/animalFarm_01        ~/dev_remote/animalFarm_01
+diff $1 ~/testingComplexSystems/caseStudy_01/animalFarm_01.dd     ~/dev_remote/animalFarm_01.dd
+diff $1 ~/testingComplexSystems/caseStudy_02/animalFarm_02        ~/dev_remote/animalFarm_02
+diff $1 ~/testingComplexSystems/caseStudy_02/animalFarm_02.dd     ~/dev_remote/animalFarm_02.dd
+diff $1 ~/testingComplexSystems/gDS/gDSCodeGen                    ~/dev_remote/gDSCodeGen
+diff $1 ~/testingComplexSystems/gDS/testCodeGen                   ~/dev_remote/testCodeGen
+diff $1 ~/testingComplexSystems/caseStudy_03/nfsTest              ~/dev_remote/nfsTest
+diff $1 ~/testingComplexSystems/caseStudy_03/nfsTest.dd           ~/dev_remote/nfsTest.dd
+diff $1 ~/testingComplexSystems/dev_code/diff_em                  ~/dev_remote/diff_em
+set +x

@@ -15,7 +15,7 @@ import sys
 if (not os.path.exists("./animalFarm_01.py")) or \
    (os.path.getmtime("./animalFarm_01.dd") > os.path.getmtime("./animalFarm_01.py")):
     print ("")
-    print ("./animalFarm_01.py does not exist or needs to be re-created with gDSCodeGen. Exiting.")
+    print ("./animalFarm_01.py does not exist or needs to be re-created using gDSCodeGen. Exiting.")
     print ("")
     sys.exit(1)
     
@@ -41,11 +41,12 @@ class MasterLock:
 
 
 #
-# Called by many activities to add (1) animal to a farm under lock
+# Called by many activities to add (1) animal row to a farm under lock
 #
 def addOneAnimal(farmRef, animalType, animalNumber):
 
-    # Called by each process, this gets them all running at random times over a 2 to 8 second interval
+    # Called by each spawned process, this code gets them all running at random times
+    # over a 2 to 8 second interval
     time.sleep(random.uniform(2.0, 8.0))
 
     tempNumber = "%2.2d" % (animalNumber)
@@ -81,7 +82,7 @@ if __name__ == "__main__":
     farmRefC = gFarm_AddARow(_Name = "Farm C", _gCounty_Ref = countyRefB)
     
     print ("")
-    print ("Just added 2 counties and 3 farms")
+    print ("We just added 2 counties and 3 farms")
 
 
     #
@@ -122,6 +123,7 @@ if __name__ == "__main__":
         aProcess.join()
         
 
+    print ("")
     print ("Done with adding animals!")
     print ("")
 
@@ -172,3 +174,15 @@ if __name__ == "__main__":
         
     print ("")
     
+    # Interactively print details of a given animal
+    inStr = "x"
+    while inStr:
+        print ("")
+        inStr = input ("Enter a value for animalRef [def = stop]: ")
+        if inStr:
+            animalRef = int(inStr)
+            print ("")
+            print ("animalRef   = ", animalRef)
+            print ("Animal name = ", gAnimal_Name[animalRef])
+            print ("Farm name   = ", gFarm_Name[gAnimal_gFarm_Ref[animalRef]])
+            print ("County name = ", gCounty_Name[gFarm_gCounty_Ref[gAnimal_gFarm_Ref[animalRef]]])
