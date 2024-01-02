@@ -334,11 +334,14 @@ def verifyNameColumnExists():
             
                 currentTableName = elementName
                 nameSeen = False
+                rowStatusSeen = False
                 
             elif primaryKeyword == "defineColumn":
             
                 if elementName == f"{currentTableName}_Name":
                     nameSeen = True
+                if elementName == f"{currentTableName}_RowStatus":
+                    rowStatusSeen = True
                     
             elif primaryKeyword == "endTable":
             
@@ -346,40 +349,8 @@ def verifyNameColumnExists():
                     print (f"{codeLine()}Table '{currentTableName}' doesn't have a Name column at line {lineIndex} of the input file")
                     exit (1)
                 
-                currentTableName = None
-
-    return
-
-
-#
-#-# (Pass G) Verify RowStatus column is there and last
-#
-def verifyRowStatusColumnIsLast():
-
-    lineIndex = 0
-    
-    currentTableName = None
-    
-    rowStatusSeenLast = None
-
-    while lineIndex < len(LinesToProcess):
-    
-        (lineIndex, primaryKeyword, elementName, dummy) = getNextLineToProcess(lineIndex)
-        
-        if primaryKeyword is not None:
-        
-            if primaryKeyword == "defineTable":
-                currentTableName = elementName
-                rowStatusSeenLast = False
-                
-            elif primaryKeyword == "defineColumn":
-                rowStatusSeenLast = False
-                if elementName == f"{currentTableName}_RowStatus":
-                    rowStatusSeenLast = True
-                    
-            elif primaryKeyword == "endTable":
-                if not rowStatusSeenLast:
-                    print (f"{codeLine()}Table '{currentTableName}' has no RowStatus routine *last* at line {lineIndex} of the input file")
+                if not rowStatusSeen:
+                    print (f"{codeLine()}Table '{currentTableName}' doesn't have a RowStatus column at line {lineIndex} of the input file")
                     exit (1)
                 
                 currentTableName = None
@@ -484,6 +455,7 @@ def generateAllVariableDefinitions(datastoreNamePrefix):
 
 #
 # Generate code to create a row with the initial values presented in the column definitions
+# The 'RowStatus' column code always gets created goes last.
 #
 def generateRowAddCode():
 
@@ -556,11 +528,13 @@ def generateRowAddCode():
                     fqColumnName = fqDictName[:-4]
 
                     # See if just-inserted column value is in dictionary
+                    GeneratedCode += f"    thisRef = len({currentTableName}_RowStatus) - 1\n"
                     GeneratedCode += f"    if {fqColumnName}[thisRef] in {fqDictName}:\n"
                     GeneratedCode += f"        print ('')\n"
                     GeneratedCode += f"        print ('Duplicate key in {fqDictName}; value = ', {fqColumnName}[thisRef])\n"
                     GeneratedCode += f"        print ('')\n"
                     GeneratedCode += f"        x = 1/0 # Dup key add attempt (above) to index {fqDictName}\n"
+                    GeneratedCode += f"\n"
                     GeneratedCode += f"    {fqDictName}[{fqColumnName}[thisRef]] = thisRef\n"
                     GeneratedCode += f"\n"
 
@@ -575,6 +549,9 @@ def generateRowAddCode():
     
     currentTableStartLine = None
     
+    rowStatusAppendCode = None
+    rowStatusColumnName = None
+    
     while lineIndex < len(LinesToProcess):
     
         (lineIndex, primaryKeyword, elementName, initialValue) = getNextLineToProcess(lineIndex)
@@ -587,9 +564,6 @@ def generateRowAddCode():
                 
                 currentTableStartLine = lineIndex
 
-                # Init last column name used for calculating table length
-                lastColumnName = None
-                
                 # Generate header
                 GeneratedCode += f"\n"
                 GeneratedCode += f"#\n"
@@ -610,8 +584,11 @@ def generateRowAddCode():
             elif primaryKeyword == "defineColumn":
                 # Pull table name off the front of the column name to make arg names
                 (dummy, columnArgName) = elementName.split("_", 1)
-                GeneratedCode += f"    {elementName}.append(_{columnArgName})\n"
-                lastColumnName = elementName
+                if columnArgName == "RowStatus":
+                    rowStatusAppendCode = f"    {elementName}.append(_{columnArgName})\n"
+                    rowStatusColumnName = elementName
+                else:
+                    GeneratedCode += f"    {elementName}.append(_{columnArgName})\n"
                 
             # Add indices after the rest of the header table has been generated
             elif primaryKeyword == "defineIndex":
@@ -619,15 +596,16 @@ def generateRowAddCode():
                 
             elif primaryKeyword == "endTable":
             
-                # Get current length (index to this entry)
-                GeneratedCode += f"    thisRef = len({lastColumnName}) - 1\n"
+                # At end of each table do the RowStatus column append
+                GeneratedCode += rowStatusAppendCode
+            
                 GeneratedCode += f"\n"
                 
                 # Process any 'defineIndex' citations
                 addAllDefineIndexCode(currentTableStartLine)
 
                 # Generate return of current table length
-                GeneratedCode += f"    return (thisRef)\n"
+                GeneratedCode += f"    return (len({rowStatusColumnName}) - 1)\n"
                 
                 currentTableName = None
     
@@ -945,10 +923,7 @@ verifyIndexs()
 #-# (Pass F) All tables need a Name column
 verifyNameColumnExists()
 
-#-# (Pass G) Verify RowStatus column is there and last
-verifyRowStatusColumnIsLast()
-
-#-# (Pass H) Verify defeineList / definedict specify no initial values
+#-# (Pass H) Verify defineList / definedict specify no initial values
 verifyNoListDictInit()
 
 #-# (Pass I) Verify all unaries have initial values
