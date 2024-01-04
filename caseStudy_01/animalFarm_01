@@ -58,48 +58,6 @@ class MasterLock:
 
 
 #
-# This supports extracting in-line text blocks at run time.
-# It's good for templates and "help" blocks.
-#
-class InLineText:
-
-    codeLines = []
-
-    def getCodeLines():
-    
-        InLineText.codeLines = open(sys.argv[0], "r").read().splitlines()
-
-
-    def getText(tag, substitutionList = []):
-
-        lineRef = 0
-        harvestingText = False
-        harvestedText = ''
-
-        while lineRef <= len(InLineText.codeLines):
-
-            line = InLineText.codeLines[lineRef]
-            lineRef += 1
-
-            if (not harvestingText) and ('""" - ' in line):
-                indent = line.find('"""')
-                line = line[indent:]
-                line = line.replace('""" - ', "")
-                if line == tag:
-                    harvestingText = True
-                    
-            elif (not harvestingText) and (lineRef == len(InLineText.codeLines)):
-                print ("Can not find in-line text tag '%s'" % (tag))
-                x = 1/0
-
-            elif harvestingText and ('"""' in line):
-                return (harvestedText % (substitutionList))
-                
-            elif harvestingText:
-                harvestedText += line[indent:] + "\n"
-
-
-#
 # Called by many activities to add (1) animal row to a farm under lock
 #
 def addOneAnimal(farmRef, animalType, animalNumber):
@@ -126,10 +84,6 @@ def addOneAnimal(farmRef, animalType, animalNumber):
 ##################
 
 if __name__ == "__main__":
-
-    # Display this program's status to the user
-    InLineText.getCodeLines()
-    #print (InLineText.getText("Status"))
 
     # No need to lock here!
 

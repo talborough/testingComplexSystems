@@ -1109,13 +1109,13 @@ class Background:
         return
         
         
+#
+# Main code
+#
 if __name__ == "__main__":
 
     # Get in line text
     InLineText.getCodeLines()
-
-    # Display this program's status to the user
-    #print (InLineText.getText("Status"))
 
     # Handle batch mode
     gBatchMode[0] = False

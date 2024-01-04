@@ -1857,8 +1857,7 @@ class Configurator:
 
 
 #
-# Routines to handle in-line documentation/text (text in this source file that
-#     can be extracted at run time and used for help or templates)
+# Main code
 #
 if __name__ == "__main__":
 
@@ -1873,9 +1872,6 @@ if __name__ == "__main__":
     # Load in this program's code for in-line text processing
     InLineText.getCodeLines()
 
-    # Display this program's status to the user
-    #print (InLineText.getText("Status"))
-    
     # Enable NFS operations in the state machines (it can be disabled here for debug)
     gSMNFSFunctionsEnabled[0] = True
 
