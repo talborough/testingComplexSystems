@@ -85,9 +85,9 @@ def runOneTest(dataTag):
     
     expectedOutput = InLineText.getText(f"{dataTag} expected output")[:-1]
     
-    (retCode, stdout, stderr) = issueCmdLocal(f"./gDSCodeGen testFile")
+    (retCode, stdout, stderr) = issueCmdLocal(f"./gDSCodeGen -q testFile")
     
-    actualOutput = stdout.splitlines()[1]
+    actualOutput = stdout.splitlines()[0]
     if actualOutput != expectedOutput:
     
         print (f"{dataTag} - Error - Expected - {expectedOutput} \n                Actual - {actualOutput}")
