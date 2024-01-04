@@ -2,7 +2,7 @@
 
 """ - Status
 
-+++ - gDSCodeGen - Generate gDS code from a user-supplied data definition file (<file>.dd).
++++ - gDSCodeGen - Generate gDS code from a user-supplied data definition file.
 
     V0100 - 01/04/2024 06:45 - Initial version entry.
     
@@ -944,12 +944,23 @@ def generateTableDumpCode():
 ###
 ###################################
 
+commandLineArg = sys.argv[1]
+
+quietMode = False
+for arg in sys.argv:
+    if arg == "-q":
+        quietMode = True
+        commandLineArg = sys.argv[2]
+
 # Display this program's status to the user
 InLineText.getCodeLines()
-print (InLineText.getText("Status"))
+
+if not quietMode:
+    print (InLineText.getText("Status"))
 
 # Get the datastore definition file name prefix
-datastoreNamePrefix = sys.argv[1]
+datastoreNamePrefix = commandLineArg
+
 if not os.path.exists(datastoreNamePrefix + ".dd"):
     print (f"{codeLine()}File {datastoreNamePrefix + '.dd'} does not exist")
     exit (1)
@@ -1002,6 +1013,8 @@ generateTableDumpCode()
 
 # Write out the Python file <file name>.py
 open(f"{datastoreNamePrefix}.py", "w").write(GeneratedCode)
+
+print ("")
 print ("Remember to iterate on the 'RowStatus' column of active tables.")
 print (f"Successfully wrote file {datastoreNamePrefix}.py")
 print ("")
