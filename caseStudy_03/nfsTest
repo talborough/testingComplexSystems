@@ -1874,7 +1874,7 @@ if __name__ == "__main__":
     InLineText.getCodeLines()
 
     # Display this program's status to the user
-    print (InLineText.getText("Status"))
+    #print (InLineText.getText("Status"))
     
     # Enable NFS operations in the state machines (it can be disabled here for debug)
     gSMNFSFunctionsEnabled[0] = True

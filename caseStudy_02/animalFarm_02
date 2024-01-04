@@ -1115,7 +1115,7 @@ if __name__ == "__main__":
     InLineText.getCodeLines()
 
     # Display this program's status to the user
-    print (InLineText.getText("Status"))
+    #print (InLineText.getText("Status"))
 
     # Handle batch mode
     gBatchMode[0] = False

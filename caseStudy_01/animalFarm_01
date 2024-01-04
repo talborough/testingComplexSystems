@@ -129,7 +129,7 @@ if __name__ == "__main__":
 
     # Display this program's status to the user
     InLineText.getCodeLines()
-    print (InLineText.getText("Status"))
+    #print (InLineText.getText("Status"))
 
     # No need to lock here!
 
