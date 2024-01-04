@@ -2,6 +2,7 @@
 # diff_em - Diff current "dev" <==> repo state
 #
 set -x
+diff $1 ~/testingComplexSystems/README.md                         ~/dev_remote/README.md
 diff $1 ~/testingComplexSystems/caseStudy_01/animalFarm_01        ~/dev_remote/animalFarm_01
 diff $1 ~/testingComplexSystems/caseStudy_01/animalFarm_01.dd     ~/dev_remote/animalFarm_01.dd
 diff $1 ~/testingComplexSystems/caseStudy_02/animalFarm_02        ~/dev_remote/animalFarm_02

@@ -1,2 +1,3 @@
 # testingComplexSystems
-Material used by the https://TestingComplexSystems.com web site. Please see that website for more information.
+
+This repo contains material used by the https://TestingComplexSystems.com web site. It is not version controlled like an ordinary git repo. Please see the website menu tab [Case Studies & Code] for more information.
