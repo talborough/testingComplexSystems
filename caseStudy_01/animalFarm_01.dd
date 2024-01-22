@@ -1,11 +1,11 @@
 #
-# The data definition file for the animalFarm_01 sample program.
+# The gDS data definition file for the animalFarm_01 sample program.
 #
 # To generate the Python code:
 #
 #       ../gDS/gDSCodeGen animalFarm_01    >>>>>>> Produces animalFarm_01.py in the default directory
 #
-# gCounty - The county a farm is in
+# gCounty - The county a farm is in. There is no need to manage for concurrency.
 #
 # Keyword       Item name               Default column value if cited
 # =======       =========               =============================
@@ -15,17 +15,17 @@ defineIndex     gCounty_Name2Ref                                # A dictionary t
 defineColumn    gCounty_RowStatus       None                    # For concurrency control but - not used
 endTable
 #
-# gFarm - The farms
+# gFarm - The farms animals belong to. There is no need to manage for concurrency.
 #
 # Keyword       Item name               Default column value if cited
 # =======       =========               =============================
 defineTable     gFarm                                           # Table definition
 defineColumn    gFarm_Name                                      # The farm's name
-defineColumn    gFarm_gCounty_Ref       None                    # The county a farm is in
+defineColumn    gFarm_gCounty_Ref       None                    # The county the farm is in
 defineColumn    gFarm_RowStatus         None                    # For concurrency control but - not used
 endTable
 #
-# gAnimal - The animals on a farm
+# gAnimal - The animals on a farm. Managed with MasterLock only in this exercise.
 #
 # Keyword       Item name               Default column value if cited
 # =======       =========               =============================
@@ -33,11 +33,11 @@ defineTable     gAnimal                                         # Table definiti
 defineColumn    gAnimal_gFarm_Ref                               # The farm owning the animal
 defineColumn    gAnimal_Type                                    # The kind of animal
 defineColumn    gAnimal_Name                                    # The animal's name
-defineColumn    gAnimal_RowStatus       None                    # For concurrency control but - not used
+defineColumn    gAnimal_RowStatus       None                    # For row locks but - not used
 endTable
 
 #
-# Example of more types of global shared variables
+# Examples of more types of global shared variables
 #
 # Keyword       Item name               Default column value if cited
 # =======       =========               =============================

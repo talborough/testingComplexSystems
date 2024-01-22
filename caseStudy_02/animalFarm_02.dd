@@ -5,48 +5,50 @@
 #
 #       ../gDS/gDSCodeGen animalFarm_02    >>>>>>> Produces animalFarm_02.py in the default directory
 #
-# gCounty - The county a farm is in
+# gCounty - The county a farm is in. This is managed for concurrency at set up time using MasterLock.
 #
 defineTable     gCounty                                         # Table definition
 defineColumn    gCounty_Name            None                    # The county name
-defineIndex     gCounty_Name2Ref                                # A dictionary to look up a county ref by name
-defineColumn    gCounty_RowStatus                               # For locking row
+defineColumn    gCounty_RowStatus                               # For locking the row - not used
 endTable
 #
-# gFarm - The farms
+# gFarm - The farms animals belong to. There is no need to manage for concurrency.
 #
 defineTable     gFarm                                           # Table definition
 defineColumn    gFarm_Name              None                    # Farm name
 defineColumn    gFarm_gCounty_Ref                               # The county a farm is in
 defineColumn    gFarm_MilkTotal         0                       # Total pumped
 defineColumn    gFarm_EggsTotal         0                       # Total gathered
-defineColumn    gFarm_RowStatus                                 # For locking row
+defineColumn    gFarm_RowStatus                                 # For locking the row - not used
 endTable
 #
-# The animals on a farm
+# The animals on a farm. Concurrency is managed with both MasterLock and row locks.
 #
 defineTable     gAnimal                                         # Table definition
 defineColumn    gAnimal_gFarm_Ref                               # The farm owning the animal
 defineColumn    gAnimal_Type                                    # The kind of animal
 defineColumn    gAnimal_Name            None                    # The animal's name
 defineColumn    gAnimal_Produced        0                       # Milk or eggs produced
-defineIndex     gAnimal_Name2Ref                                # Play index
-defineColumn    gAnimal_RowStatus                               # For locking row
+defineIndex     gAnimal_Name2Ref                                # Use this to verify index behavior
+defineColumn    gAnimal_RowStatus                               # For locking and managing the row
 endTable
 #
-# Global flags/counters
+# Unary counts for verification. These are referenced by both mainline and background
+# activities concurrently and are managed with ManageLock.
+#
+defineUnary     gTotalMilkCalculated    0                       # "Calculated" = counted as made
+defineUnary     gTotalMilkObserved      0                       # "Observed" = count during verification
+defineUnary     gTotalEggsCalculated    0                       # "Calculated" = counted as made
+defineUnary     gTotalEggsObserved      0                       # "Observed" = count during verification
+defineUnary     gTotalAnimalsCalculated 0                       # "Calculated" = counted as made
+defineUnary     gTotalAnimalsObserved   0                       # "Observed" = count during verification
+#
+# Global controls
 #
 defineUnary     gStartTime              0                       # Overall start time
 defineUnary     gStopBackgroundProcs    True                    # Stop background procs
-defineUnary     gMakeTestRun            False                   # Straight interactive mode or make a interactive "test run"
+defineUnary     gMakeTestRun            False                   # Interactive mode or an interactive "test run"
 defineUnary     gRunStopTime            0                       # Stop test run after this time
 defineUnary     gCycleStopTime          0                       # Stop test cycle after this time
 defineUnary     gBatchMode              False                   # Make a test run from the command line / in batch mode 
 defineUnary     gScreenLines            ""                      # Collect screen lines here to display
-#
-defineUnary     gTotalMilkCalculated    0                       # Overall counts for internal animalFarm_02 checking
-defineUnary     gTotalMilkObserved      0                       # "Calculated" = counted as made / "erased"
-defineUnary     gTotalEggsCalculated    0                       # "Observer" = Counted appearences in tables
-defineUnary     gTotalEggsObserved      0
-defineUnary     gTotalAnimalsCalculated 0
-defineUnary     gTotalAnimalsObserved   0
