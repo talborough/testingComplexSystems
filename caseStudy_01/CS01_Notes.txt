@@ -1,0 +1,45 @@
+CS01_Notes.txt - Presentation notes
+
+
+Note the separate Windows and the Linux host computers / virtual machines (VMs).
+
+
+Introduce GitHub / git / testingComplexSystems repository:
+
+    Browse to https://github.com/talborough/testingComplexSystems for a look at the repo and some files
+    git clone https://github.com/talborough/testingComplexSystems to get a local copy of the repository
+    Review repo contents in ~/testingComplexSystems
+    
+    
+Review Case Study 1 repo contents:
+
+    .dd file
+    application code
+    presentation notes
+
+
+Review .dd file:
+
+    Start / end 3 tables
+    Each row of the 3 tables
+    Table name format
+    Column names format
+    Reference column format
+    Index column format
+    Unary data items
+   
+    
+Run gDSCodeGen to produce the .py file:
+
+    Review .py file
+    Declare "global shared" variables for the 3 tables (and unary data) first
+    Create the <table>_AddARow routines
+    Create the <table>_DeleteRows routines
+    Create the <table>_DumpRows routines
+    
+    
+Review animalFarm_01 code and execution (2 passes)
+
+
+
+    

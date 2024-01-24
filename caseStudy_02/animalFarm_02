@@ -760,7 +760,7 @@ class UI:
                 gScreenLines[0] += (" up / ca / va = Update farm production tables; Compress the gAnimal table; Verify all \n")
 
             gScreenLines[0] += (" st / eb = Start a test run; End all (background/test run) processing \n")
-            gScreenLines[0] += (" e1      = Inject an error during a test run \n")
+            gScreenLines[0] += (" e1 = Inject an error during a test run \n")
             gScreenLines[0] += (" help - Print help on screen \n")
             gScreenLines[0] += (" \n")
             gScreenLines[0] += (f" Last command = '{UI.lastCommand}' \n")
@@ -890,8 +890,9 @@ class UI:
                     UI.startACycle()
                 else:
                     # End of Batch run
-                    print ("")
+                    UI.serviceTerminal()
                     print (" Done!")
+                    print ("")
                     exit (0)
 
         # End of Batch run processing goes here
@@ -980,7 +981,7 @@ class Background:
             
                 MasterLock.lock()
 
-                j = int(random.uniform(20.0, 40.0))
+                j = int(random.uniform(4.0, 6.0))
                 gAnimal_Produced[animalRef] += j
                 gTotalMilkCalculated[0] += j
                 
@@ -1108,7 +1109,7 @@ if __name__ == "__main__":
     # Set up the global DB for subsequent operation
     UI.setUp()
     
-    # Make a major decision on what code to execute based on interactive or Batch mode 
+    # Make a major decision on what code to execute based on interactive or batch mode 
     print ("")
     if gBatchMode[0]:
         print ("Start one batch run")

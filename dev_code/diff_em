@@ -12,4 +12,7 @@ diff $1 ~/testingComplexSystems/gDS/testCodeGen                   ~/dev_remote/t
 diff $1 ~/testingComplexSystems/caseStudy_03/nfsTest              ~/dev_remote/nfsTest
 diff $1 ~/testingComplexSystems/caseStudy_03/nfsTest.dd           ~/dev_remote/nfsTest.dd
 diff $1 ~/testingComplexSystems/dev_code/diff_em                  ~/dev_remote/diff_em
+diff $1 ~/testingComplexSystems/caseStudy_01/CS01_Notes.txt       ~/dev_remote/CS01_Notes.txt
+diff $1 ~/testingComplexSystems/caseStudy_02/CS02_Notes.txt       ~/dev_remote/CS02_Notes.txt
+diff $1 ~/testingComplexSystems/caseStudy_03/CS03_Notes.txt       ~/dev_remote/CS03_Notes.txt
 set +x
