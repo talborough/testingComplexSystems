@@ -1,1 +1,24 @@
 CS03_Notes.txt - Presentation notes
+
+
+Configuration of the test platform:
+
+    1 Control host running nfsTest
+    3 Test hosts (servers and clients) running NFS and ioEngine
+
+
+NFS / test platform operation:
+
+    1) Establish file system(s) on the server hosts and export them with NFS
+    2) Import the above file systems on the client hosts with NFS
+    3) Start using the imported file systems on the client hosts
+    
+    4) Reboot server(s) (no client workloads should notice)
+    5) Swap any host between a client and server role (remaining client workloads should not notice)
+
+
+The goal:
+
+    Accomplish #4 and #5 above together, gracefully.
+
+

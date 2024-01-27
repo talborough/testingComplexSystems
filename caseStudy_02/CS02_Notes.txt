@@ -48,7 +48,7 @@ Run animalFarm_02:
         
     Command line test run:
     
-    ./animalFarm02 --rt=120 --ct=30 --tc=3 --rx=4
+    ./animalFarm02 --rt=90 --ct=30 --tc=3 --rx=4
     
     
 Review animalFarm_02 code:
@@ -57,7 +57,7 @@ Review animalFarm_02 code:
     
     Review Background.allocateAnAnimal / Background.tendCow
     
-    Review main code
+    Review main line code
         
     
     
