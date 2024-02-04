@@ -22,3 +22,7 @@ The goal:
     Accomplish #4 and #5 above together, gracefully.
 
 
+Review nfsTest.py
+
+Review nfsTest.conf
+

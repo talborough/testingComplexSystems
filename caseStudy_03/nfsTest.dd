@@ -13,9 +13,6 @@ defineUnary     gPassword               None        # To go with the username ab
 
 defineUnary     gStartTime              0           # Overall start time
 defineUnary     gIOEngineNumber         0           # Unique ioEngine file names
-defineUnary     gActivatorState         None        # Overall control of all the state machines
-defineUnary     gSMNFSFunctionsEnabled  False       # Run state machines with / without NFS actions
-
 defineUnary     gAllStop                False       # Something happened - stop as fast as possisble
 
 #
@@ -26,14 +23,14 @@ defineColumn    gHost_Identifier                    # The IP or DNS name from th
 defineColumn    gHost_IP                None        # The hosts's IP address from a "hostname -I" command
 defineColumn    gHost_Hostname          None        # The hosts's "hostname" from a "hostname" command
 defineColumn    gHost_Name              None        # The hosts's name in 'host #n' format
-defineColumn    gHost_Role              None        # A test host can be a control, server, client or unused
+defineColumn    gHost_Role              None        # A test host can be a server or client
 defineColumn    gHost_State             ""          # Test hosts (only) can be inactive, activating, etc.
 defineColumn    gHost_PrevState         ""          # Save to here when rebooting
 defineColumn    gHost_Reboot            False       # Set to trigger reboot of host
-defineColumn    gHost_ExportFSUseCount  0
-defineColumn    gHost_ImportFSUseCount  0
-defineColumn    gHost_FSUserUseCount    0
-defineColumn    gHost_IOCount           0
+defineColumn    gHost_ExportFSUseCount  0           # Number of exported FS on this host
+defineColumn    gHost_ImportFSUseCount  0           # Number of imported FS on this host
+defineColumn    gHost_FSUserUseCount    0           # Number of FS users on the host
+defineColumn    gHost_IOCount           0           # Number of complete I/Os on this host  
 defineColumn    gHost_RowStatus         None
 endTable
 
@@ -57,7 +54,7 @@ defineColumn    gImportFS_gExportFS_Ref             # The exported FS being impo
 defineColumn    gImportFS_gHost_Ref                 # The client used for the import and use
 defineColumn    gImportFS_Name                      # The mounted file system name on the host
 defineColumn    gImportFS_State         "Inactive"  # The current state of the imported FS
-defineColumn    gImportFS_FSUserUseCount 0          # The number of users on this imported FS
+defineColumn    gImportFS_FSUserUseCount 0          # The number of FS users on this imported FS
 defineColumn    gImportFS_RowStatus     None
 endTable
 
@@ -70,7 +67,8 @@ defineColumn    gFSUser_gImportFS_Ref               # The imported FS being used
 defineColumn    gFSUser_gHost_Ref                   # The host ioEngine runs on
 defineColumn    gFSUser_Name                        # The name of the currently active ioEngine data file
 defineColumn    gFSUser_State           "Inactive"  # The current state of the FS use
-defineColumn    gFSUser_IOEFileNumber   0           # As we write files with ioEngine we incerment / use this number
+defineColumn    gFSUser_IOEFileNumber   0           # Increment this per file written with IOEngine
+defineColumn    gFSUser_ForceFailure    False       # Force one data compare error on next I/O
 defineColumn    gFSUser_RowStatus       None
 endTable
 
@@ -81,41 +79,30 @@ defineUnary     gHostInactive           0
 defineUnary     gHostActivating         0
 defineUnary     gHostActive             0
 defineUnary     gHostDeactivating       0
-defineUnary     gHostDisabling          0
-defineUnary     gHostDisabled           0
 defineUnary     gHostRebooting          0
+defineUnary     gHostSwapping           0
 defineUnary     gHostSMThreadCount      0
 
 defineUnary     gExportFSInactive       0
 defineUnary     gExportFSActivating     0
 defineUnary     gExportFSActive         0
 defineUnary     gExportFSDeactivating   0
-defineUnary     gExportFSDisabling      0
-defineUnary     gExportFSDisabled       0
 defineUnary     gExportFSRebooting      0
+defineUnary     gExportFSSwapping       0
 defineUnary     gExportFSSMThreadCount  0
 
 defineUnary     gImportFSInactive       0
 defineUnary     gImportFSActivating     0
 defineUnary     gImportFSActive         0
 defineUnary     gImportFSDeactivating   0
-defineUnary     gImportFSDisabling      0
-defineUnary     gImportFSDisabled       0
+defineUnary     gImportFSRebooting      0
+defineUnary     gImportFSSwapping       0
 defineUnary     gImportFSSMThreadCount  0
 
 defineUnary     gFSUserInactive         0
 defineUnary     gFSUserActivating       0
 defineUnary     gFSUserActive           0
 defineUnary     gFSUserDeactivating     0
-defineUnary     gFSUserDisabling        0
-defineUnary     gFSUserDisabled         0
+defineUnary     gFSUserRebooting        0
+defineUnary     gFSUserSwapping         0
 defineUnary     gFSUserSMThreadCount    0
-
-defineUnary     gAllInactive            0
-defineUnary     gAllActivating          0
-defineUnary     gAllActive              0
-defineUnary     gAllDeactivating        0
-defineUnary     gAllDisabling           0
-defineUnary     gAllDisabled            0
-defineUnary     gAllRebooting           0
-
