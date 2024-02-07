@@ -16,20 +16,18 @@ defineUnary     gIOEngineNumber         0           # Unique ioEngine file names
 defineUnary     gAllStop                False       # Something happened - stop as fast as possisble
 
 #
-# Manage various entities - we always have hosts
+# Manage various entities - we always have test hosts
 #
-defineTable     gHost                               # Host host attributes
+defineTable     gHost                               # Test host attributes
 defineColumn    gHost_Identifier                    # The IP or DNS name from the nfsTest.conf file
 defineColumn    gHost_IP                None        # The hosts's IP address from a "hostname -I" command
 defineColumn    gHost_Hostname          None        # The hosts's "hostname" from a "hostname" command
 defineColumn    gHost_Name              None        # The hosts's name in 'host #n' format
 defineColumn    gHost_Role              None        # A test host can be a server or client
-defineColumn    gHost_State             ""          # Test hosts (only) can be inactive, activating, etc.
-defineColumn    gHost_PrevState         ""          # Save to here when rebooting
-defineColumn    gHost_Reboot            False       # Set to trigger reboot of host
+defineColumn    gHost_State             "Inactive"  # Test hosts can be Inactive, Activating, etc.
 defineColumn    gHost_ExportFSUseCount  0           # Number of exported FS on this host
 defineColumn    gHost_ImportFSUseCount  0           # Number of imported FS on this host
-defineColumn    gHost_FSUserUseCount    0           # Number of FS users on the host
+defineColumn    gHost_FSUserUseCount    0           # Number of FS users on this host
 defineColumn    gHost_IOCount           0           # Number of complete I/Os on this host  
 defineColumn    gHost_RowStatus         None
 endTable
@@ -41,7 +39,6 @@ defineTable     gExportFS                           # An exported file system
 defineColumn    gExportFS_gHost_Ref                 # The host the exported FS is on
 defineColumn    gExportFS_Name                      # The exported file system name on the host
 defineColumn    gExportFS_State         "Inactive"  # The current state of the exported FS
-defineColumn    gExportFS_PrevState     "Inactive"  # The previous state of the exported FS
 defineColumn    gExportFS_ImportFSUseCount 0        # The number of mounted FS on this exported FS
 defineColumn    gExportFS_RowStatus     None
 endTable
@@ -51,7 +48,7 @@ endTable
 #
 defineTable     gImportFS
 defineColumn    gImportFS_gExportFS_Ref             # The exported FS being imported
-defineColumn    gImportFS_gHost_Ref                 # The client used for the import and use
+defineColumn    gImportFS_gHost_Ref                 # The host used for the import
 defineColumn    gImportFS_Name                      # The mounted file system name on the host
 defineColumn    gImportFS_State         "Inactive"  # The current state of the imported FS
 defineColumn    gImportFS_FSUserUseCount 0          # The number of FS users on this imported FS
