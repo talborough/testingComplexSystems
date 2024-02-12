@@ -4,6 +4,7 @@
 
 +++ - gDSCodeGen - Generate gDS code from a user-supplied data definition file.
 
+    V0102 - 02/12/2024 11:11 - Support dumping to a file or the screen.
     V0101 - 01/22/2024 09:20 - Fix up for webinars. Change the name of the generated support routines.
     V0100 - 01/04/2024 06:45 - Initial version entry.
     
@@ -900,7 +901,7 @@ def generateTableDumpCode():
                 GeneratedCode += f"#\n"
                 GeneratedCode += f"# Print values out for table '{currentTableName}'\n"
                 GeneratedCode += f"#\n"
-                GeneratedCode += f"def {currentTableName}_DumpRows(rangeListToDump = None):\n"
+                GeneratedCode += f"def {currentTableName}_DumpRows(rangeListToDump = None, outFile = sys.stdout):\n"
                 
                 headerGenerated = False
                 
@@ -911,24 +912,24 @@ def generateTableDumpCode():
                     headerGenerated = True
 
                     GeneratedCode += "\n"
-                    GeneratedCode += f"    print (f'**************')\n"
-                    GeneratedCode += f"    print (f'**************')\n"
-                    GeneratedCode += f"    print ('    Table %24s has %d entries' % ('{currentTableName}', len({currentTableName}_RowStatus)))\n"
-                    GeneratedCode += f"    print (f'**************')\n"
-                    GeneratedCode += f"    print (f'**************')\n"
-                    GeneratedCode += f"    print (f'')\n"
+                    GeneratedCode += f"    print (f'**************', file = outFile)\n"
+                    GeneratedCode += f"    print (f'**************', file = outFile)\n"
+                    GeneratedCode += f"    print ('    Table %24s has %d entries' % ('{currentTableName}', len({currentTableName}_RowStatus)), file = outFile)\n"
+                    GeneratedCode += f"    print (f'**************', file = outFile)\n"
+                    GeneratedCode += f"    print (f'**************', file = outFile)\n"
+                    GeneratedCode += f"    print (f'', file = outFile)\n"
                     GeneratedCode += "\n"
                     GeneratedCode += f"    for i in range (0, len({currentTableName}_RowStatus)):\n"
                     GeneratedCode += f"        if (rangeListToDump is None) or (i in rangeListToDump):\n"
-                    GeneratedCode += f"            print ('    Row reference = %d' % (i))\n"
+                    GeneratedCode += f"            print ('    Row reference = %d' % (i), file = outFile)\n"
                     
                 # If an reference to another table
                 if elementName.endswith("_Ref"):
                     (dummy, destTableName, dummy) = elementName.split("_", 2)
-                    GeneratedCode += f"            print ('    %30s = %10s  (%30s)' % ('{elementName}', {elementName}[i], {destTableName}_Name[{elementName}[i]]))\n"
+                    GeneratedCode += f"            print ('    %30s = %10s  (%30s)' % ('{elementName}', {elementName}[i], {destTableName}_Name[{elementName}[i]]), file = outFile)\n"
                     
                 else:
-                    GeneratedCode += f"            print ('    %30s = %10s' % ('{elementName}', {elementName}[i]))\n"
+                    GeneratedCode += f"            print ('    %30s = %10s' % ('{elementName}', {elementName}[i]), file = outFile)\n"
                     
             elif primaryKeyword == "defineIndex":
                 pass

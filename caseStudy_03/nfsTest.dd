@@ -77,7 +77,6 @@ defineUnary     gHostActivating         0
 defineUnary     gHostActive             0
 defineUnary     gHostDeactivating       0
 defineUnary     gHostRebooting          0
-defineUnary     gHostSwapping           0
 defineUnary     gHostSMThreadCount      0
 
 defineUnary     gExportFSInactive       0
@@ -85,7 +84,6 @@ defineUnary     gExportFSActivating     0
 defineUnary     gExportFSActive         0
 defineUnary     gExportFSDeactivating   0
 defineUnary     gExportFSRebooting      0
-defineUnary     gExportFSSwapping       0
 defineUnary     gExportFSSMThreadCount  0
 
 defineUnary     gImportFSInactive       0
@@ -93,7 +91,6 @@ defineUnary     gImportFSActivating     0
 defineUnary     gImportFSActive         0
 defineUnary     gImportFSDeactivating   0
 defineUnary     gImportFSRebooting      0
-defineUnary     gImportFSSwapping       0
 defineUnary     gImportFSSMThreadCount  0
 
 defineUnary     gFSUserInactive         0
@@ -101,5 +98,4 @@ defineUnary     gFSUserActivating       0
 defineUnary     gFSUserActive           0
 defineUnary     gFSUserDeactivating     0
 defineUnary     gFSUserRebooting        0
-defineUnary     gFSUserSwapping         0
 defineUnary     gFSUserSMThreadCount    0

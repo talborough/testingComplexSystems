@@ -2,17 +2,31 @@
 # diff_em - Diff current "dev" <==> repo state
 #
 set -x
+echo ======================================================
 diff $1 ~/testingComplexSystems/README.md                         ~/dev_remote/README.md
+echo ======================================================
 diff $1 ~/testingComplexSystems/caseStudy_01/animalFarm_01        ~/dev_remote/animalFarm_01
+echo ======================================================
 diff $1 ~/testingComplexSystems/caseStudy_01/animalFarm_01.dd     ~/dev_remote/animalFarm_01.dd
+echo ======================================================
 diff $1 ~/testingComplexSystems/caseStudy_02/animalFarm_02        ~/dev_remote/animalFarm_02
+echo ======================================================
 diff $1 ~/testingComplexSystems/caseStudy_02/animalFarm_02.dd     ~/dev_remote/animalFarm_02.dd
+echo ======================================================
 diff $1 ~/testingComplexSystems/gDS/gDSCodeGen                    ~/dev_remote/gDSCodeGen
+echo ======================================================
 diff $1 ~/testingComplexSystems/gDS/testCodeGen                   ~/dev_remote/testCodeGen
+echo ======================================================
 diff $1 ~/testingComplexSystems/caseStudy_03/nfsTest              ~/dev_remote/nfsTest
+echo ======================================================
 diff $1 ~/testingComplexSystems/caseStudy_03/nfsTest.dd           ~/dev_remote/nfsTest.dd
+echo ======================================================
 diff $1 ~/testingComplexSystems/dev_code/diff_em                  ~/dev_remote/diff_em
+echo ======================================================
 diff $1 ~/testingComplexSystems/caseStudy_01/CS01_Notes.txt       ~/dev_remote/CS01_Notes.txt
+echo ======================================================
 diff $1 ~/testingComplexSystems/caseStudy_02/CS02_Notes.txt       ~/dev_remote/CS02_Notes.txt
+echo ======================================================
 diff $1 ~/testingComplexSystems/caseStudy_03/CS03_Notes.txt       ~/dev_remote/CS03_Notes.txt
+echo ======================================================
 set +x
