@@ -4,10 +4,7 @@ import sys
 import io
 import os
 import time
-import numpy as np
 import getopt
-
-from threading import Thread
 
 
 #########################
@@ -15,159 +12,34 @@ from threading import Thread
 # ioEngine - Do I/O to a file hoping to find some problems.
 #            See help at the end for its operation.
 #
+# Return codes:
+#
+# returnCode = 0           !          # Perfect result in w/r logic (+)
+# returnCode = 1           !          # Perfect verify of existing file (+)
+# returnCode = 14          --14       # Bad pass number after fixing it once (X)
+# returnCode = 15          !          # File too large (X)
+# returnCode = 16          !          # Data compare error in w/r logic (X)
+# returnCode = 17          !          # Data compare error in verification logic (X)
+# returnCode = 18          --18       # Clean premature EOF (+)
+# returnCode = 19          --19       # Fixed pass number once -  clean (+)
+# returnCode = 20          !          # Missing file (+)
+# returnCode = 21          !          # Empty file (+)
+# returnCode = 22          !          # Bad file start (X)
+
+#
+# X = Stop after failure
+# + = Count in platform UI
+# ! = Verify by hand
+# --nn = Generate bad file
+#
 #########################
 
-#
-# Information from the command line
-#
-class UI:
-
-    stopTime = None                 # Cease operations and wrap up at this time
-    
-    filenameInBinary = None         # The binary value of the file name
-    filenameInHexString = None      # A 16-digit hex string representation of the above value
-    dataFileLocation = None         # Where to put the data file
-    
-    # A default run
-    runTime = 15
-    pauseTime = 0.01
-    bytesPerBlock = 1024
-    blocksPerRecord = 3
-    recordsPerFile = 10
-
-    # Save option values above and return (the one, file name) arg
-    def processArgs():
-    
-        try:
-            opts, args = getopt.getopt(sys.argv[1:], "h", ["help",
-                                                           "rt=",
-                                                           "pt=",
-                                                                 ])
-        except getopt.GetoptError as err:
-            print ("")
-            print(err)
-            print ("")
-            sys.exit(99)
-
-        for i in range(0, len(opts)):
-
-            if opts[i][0] in ("-h", "--help"):
-                print (InLineText.getText("Help"))
-                exit(99)
-
-            elif opts[i][0] == ("--rt"):
-                UI.runTime = int(opts[i][1])
-
-            elif opts[i][0] == ("--pt"):
-                UI.pauseTime = float(opts[i][1])
-
-            else:
-                print ("")
-                print (f"Invalid option {opts[i][0]} -- see help")
-                print ("")
-                exit(99)
-                
-        if  len(args) != 1:
-            print ("")
-            print ("One required data file name missing")
-            print ("")
-            exit(99)
-
-        # Assume no path given in file specification
-        UI.dataFileLocation = ""
-        # And file is in default directory
-        UI.filenameInHexString = args[0]
-
-        # Split off maybe path
-        twoBits = args[0].rsplit("/", 1)
-        if len(twoBits) == 2:
-            UI.dataFileLocation = twoBits[0] + "/"
-            UI.filenameInHexString = twoBits[1]
-            
-        # Validate file name - assume twoBits[0] is a valid path to the file
-        if UI.filenameInHexString[0:2] != "0x":
-            print ("")
-            print ("The filename argument must start with '0x'")
-            print ("")
-            exit (99)
-            
-        # Make 16-digit filename
-        UI.filenameInBinary = int(UI.filenameInHexString, 16)
-        UI.filenameInHexString = "0x%16.16x" % (UI.filenameInBinary)
-        
-        print ("")
-        print (f"Run time seconds = {UI.runTime}")
-        print (f"Pause time float seconds per I/O = {UI.pauseTime}")
-        print (f"Full data file spec = {UI.dataFileLocation + UI.filenameInHexString}" + ".ioedata")
-
-        print ('')
-        print (f"Bytes per block = {UI.bytesPerBlock}")
-        print (f"Blocks per record = {UI.blocksPerRecord}")
-        print (f"Records per file = {UI.recordsPerFile}")
-        print ("")
-
-        return
-        
-    
-#
-# Thread to print I/O counts to stdout. Counters only have one writer and the readers
-# below so they are thread "OK'ish".
-#
-class ManageStats:
-
-    writeStartCount = 0
-    writeEndCount = 0
-    readStartCount = 0
-    readEndCount = 0
-    
-    passCount = 0
-    
-    stopLoop = False
-
-    #
-    # Started on a thread to write status to stdout evey few seconds (only
-    # when run at the terminal)
-    #
-    def writeStats():
-    
-        # Figure stall amount    
-        thisIOCount = 0
-        lastIOCount = 0
-        lastIOTime = 0
-        stallTime = 0
-    
-        while not ManageStats.stopLoop:
-        
-            time.sleep(2.0)
-            
-            # Figure stall amount
-            thisIOCount = ManageStats.writeStartCount + ManageStats.readStartCount
-            if thisIOCount > lastIOCount:
-                stallTime = 0
-                lastIOTime = time.time()
-            else:
-                stallTime = time.time() - lastIOTime
-            lastIOCount = thisIOCount
-            
-            print ("\033[H\033[J")
-            
-            print (f"Run time left (-10 sec max after stop) = {int(UI.stopTime - time.time())}")
-            print ("")
-            print (f"Pass count = {ManageStats.passCount}")
-            print ("")
-            print (f"Stall time = {stallTime}")
-            print ("")
-            print (f"Write start count = {ManageStats.writeStartCount}")
-            print (f"Write stop count = {ManageStats.writeEndCount}")
-            print (f"Read start count = {ManageStats.readStartCount}")
-            print (f"Read stop count = {ManageStats.readEndCount}")
-            
-        return
-
+##########################################
 #
 # Handle in-line documentation/text (text in this source file
 #   can be extracted at run time and used for help or templates)
 #
+##########################################
 class InLineText:
 
     codeLines = []
@@ -204,225 +76,490 @@ class InLineText:
                 
             elif harvestingText:
                 harvestedText += line[indent:] + "\n"
+
+
+#################################################
+#
+# Work with the data
+#
+#################################################
+class Data:
+
+    """ - Data block
+    File number         = %%8.8d
+    Pass                = %%8.8d
+    Record              = %%8.8d
+    Block               = %%8.8d
+    """
+    
+    recordTemplate = "<none>"
+    recordData = "<none>"
+
+    blockFormatString = None
+    blocksPerRecord = 7
+    charsPerRecord = None
+    recordsPerFile = 51
+    charsPerFile = None
+    passesPerFile = 10
+    
+    recordNumber = 0
+    passNumber = 0
+    
+    def initDataAttributes():
+    
+        # Pull format string from above and place it in a live variable
+        Data.blockFormatString = InLineText.getText("Data block")
+    
+        # Finish initing data geometry / variables
+        Data.makeRecordTemplate(1, 2, 3)
+        Data.charsPerRecord = len(Data.recordTemplate)
+        Data.charsPerFile = Data.charsPerRecord * Data.recordsPerFile
+        
+        return
+        
+    def makeRecordTemplate(fileNumber, passNumber, recordNumber):
+    
+        Data.recordTemplate = ""
+        
+        for blockNumber in range(Data.blocksPerRecord):
+            Data.recordTemplate += Data.blockFormatString % (fileNumber, passNumber, \
+                                                             recordNumber,  blockNumber)
+    
+        Data.recordTemplate += "** End of Record ** \n"
+
+        return
+        
+    def dumpDetails(dumpData = True):
+    
+        print ("")
+        print ("Chars per record    = ", Data.charsPerRecord)
+        print ("Records per file    = ", Data.recordsPerFile)
+        print ("Chars per file      = ", Data.charsPerFile)
+        print ("Passes per file     = ", Data.passesPerFile)
+        print ("Current pass number = ", Data.passNumber)
+        if dumpData:
+            print ("")
+            print ("Template record     = ")
+            print ("vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
+            print (Data.recordTemplate)
+            print ("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
+            print ("File record         = ")
+            print ("vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
+            print (Data.recordData)
+            print ("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
+        
+        return
+#
+# Work with the basic operation of the program
+#
+class UI:
+
+    filenameInBinary = None             # The binary value of the file name
+    filenameInDecimalString = None      # A 10-digit decimal string representation of the above value
+    dataFileLocation = None             # Where to put the data file
+
+    forceDataCompareFault = False       # Trigger a data compare error
+    
+    screenUpdateTime = time.time()      # Update sceen every few seconds
+    
+    pauseTime = 0.01                    # Wait between write / read 
+    
+    normalWriteReadProcessing = True    # "Normal" operation
+    justVerifyFile = False              # Just verify the given file
+    
+    #
+    # Make files with errors in them
+    #
+    makePrematureEOF = False # (18)
+    makeOnePassNumberChange = False # (19)
+    makeTwoPassNumberChange = False # (14)
+
+    #
+    # Process command line arguments
+    #
+    def processArgs():
+    
+        try:
+            opts, args = getopt.getopt(sys.argv[1:], "h", ["help",
+                           "mp=",
+                           "pt=",
+                           "vf",
+                           "ff",
+                           "14",
+                           "18",
+                           "19",
+                                ])
+        except getopt.GetoptError as err:
+            print ("")
+            print (err)
+            print ("")
+            x = 1/0
+
+        for i in range(0, len(opts)):
+
+            if opts[i][0] in ("-h", "--help"):
+                print (InLineText.getText("Help"))
+                exit (0)
+
+            elif opts[i][0] == ("--mp"):
+                Data.passesPerFile = int(opts[i][1])
+
+            elif opts[i][0] == ("--vf"):
+                UI.normalWriteReadProcessing = False
+                UI.justVerifyFile = True
+
+            elif opts[i][0] == ("--ff"):
+                UI.forceDataCompareFault = True
+
+            elif opts[i][0] == ("--14"):
+                UI.normalWriteReadProcessing = False
+                UI.makeTwoPassNumberChange = True
+
+            elif opts[i][0] == ("--18"):
+                UI.normalWriteReadProcessing = False
+                UI.makePrematureEOF = True
+
+            elif opts[i][0] == ("--19"):
+                UI.normalWriteReadProcessing = False
+                UI.makeOnePassNumberChange = True
+
+            elif opts[i][0] == ("--pt"):
+                UI.pauseTime = float(opts[i][1])
+
+            else:
+                print ("")
+                print (f"Invalid option {opts[i][0]} -- see help")
+                print ("")
+                x = 1/0
                 
+        # Assume no path given in file specification
+        UI.dataFileLocation = ""
+        # And file is in default directory
+        UI.filenameInDecimalString = args[0]
+        
+        # Split off maybe path
+        twoBits = args[0].rsplit("/", 1)
+        if len(twoBits) == 2:
+            UI.dataFileLocation = twoBits[0] + "/"
+            UI.filenameInDecimalString = twoBits[1]
+            
+        # Validate file name - assume twoBits[0] is a valid path to the file
+        # Make 10-digit filename
+        if (len(UI.filenameInDecimalString) > 8) or (not UI.filenameInDecimalString.isnumeric()):
+            print ("")
+            print (f"Filename argument '{UI.filenameInDecimalString}' must be 1 - 8 character decimal number")
+            print ("")
+            x = 1/0
+
+        UI.filenameInBinary = int(UI.filenameInDecimalString)
+        UI.filenameInDecimalString = "%8.8d" % (UI.filenameInBinary)
+        
+        # End of processArgs
+        return
+
+
+    ########################################
+    #
+    # Write to screen if data file is located in the default directory
+    #
+    ########################################
+    def updateScreen():
+
+        if (UI.dataFileLocation == "") and (time.time() > (UI.screenUpdateTime + 2)):
+        
+            UI.screenUpdateTime = time.time()
+
+            print ("\033[H\033[J")
+            
+            print (f"Current / max pass number = {Data.passNumber} / {Data.passesPerFile}")
+            print (f"Run time = {int(time.time() - UI.startTime)}")
+            print ("")
+            
+        return
+        
+        
+    #########################################
+    #
+    # Start of "normal" write / read logic
+    #
+    #########################################
+    def writeReadDataFile():
+
+        while Data.passNumber < Data.passesPerFile:
+        
+            UI.updateScreen()
+
+            # Always do next pass number
+            Data.passNumber += 1
+
+            dfd = open(UI.dataFileLocation + UI.filenameInDecimalString + ".ioeData", "w")
+
+            # Start at the front of any existing file
+            dfd.seek(0)
+
+            # For records in file
+            for recordNumber in range(Data.recordsPerFile):
+            
+                # Make the template and write it
+                Data.makeRecordTemplate(UI.filenameInBinary, Data.passNumber, recordNumber)
+                if UI.forceDataCompareFault:
+                    dfd.write(Data.recordTemplate + "*")
+                    UI.forceDataCompareFault = False
+                else:
+                    dfd.write(Data.recordTemplate)
+                #dfd.flush()
+                time.sleep(UI.pauseTime)
+
+            dfd.close()
+            
+            # Read and verify records
+            dfd = open(UI.dataFileLocation + UI.filenameInDecimalString + ".ioeData", "r")
+
+            for recordNumber in range(Data.recordsPerFile):
+            
+                # Make the template / read / verify
+                Data.makeRecordTemplate(UI.filenameInBinary, Data.passNumber, recordNumber)
+                Data.recordData = dfd.read(Data.charsPerRecord)
+                time.sleep(UI.pauseTime)
+
+                if Data.recordData != Data.recordTemplate:
+                
+                    UI.dumpDataAndExit("Data compare error", 16)
+                
+            dfd.close()
+
+        UI.dumpDataAndExit("Clean write / read run", 0)
+
+    #
+    # Handle various errors the same way
+    #
+    def dumpDataAndExit(msg, returnCode):
+    
+        Data.dumpDetails()
+
+        print ("")
+        print (msg)
+        
+        print (f"Exiting with return value = {returnCode}")
+        print ("")
+        exit (returnCode)
+
+
+    ########################################
+    #
+    # Verify file after aborted I/O
+    #
+    ########################################
+    def justVerifyDataFile():
+    
+        fixedPassNumberOnce = False
+
+        # Look for the file to exist
+        if not os.path.exists(UI.dataFileLocation + UI.filenameInDecimalString + ".ioeData"):
+        
+            UI.dumpDataAndExit("File missing", 20)
+
+        # Verify the file has some data in it
+        if os.path.getsize(UI.dataFileLocation + UI.filenameInDecimalString + ".ioeData") == 0:
+        
+            UI.dumpDataAndExit("Empty file", 21)
+
+        # Verify the file is not too big
+        if os.path.getsize(UI.dataFileLocation + UI.filenameInDecimalString + ".ioeData") > Data.charsPerFile:
+        
+            UI.dumpDataAndExit("File too large", 15)
+
+        # Get some data and get the initial pass number
+        dfd = open(UI.dataFileLocation + UI.filenameInDecimalString + ".ioeData", "r")
+        someData = dfd.read(Data.charsPerRecord)
+        someDataLines = someData.splitlines()
+        (key, val) = someDataLines[1].split("=")
+        dfd.close()
+
+        # Look for possible invalid data at the front of the file
+        if (len(someData) != Data.charsPerRecord) or (key.strip() != "Pass"):
+
+            UI.dumpDataAndExit("Bad data at start of file", 22)
+            
+        # Set initial pass number
+        initialPassNumber = int(val)
+            
+        # Read and verify records in the file
+        dfd = open(UI.dataFileLocation + UI.filenameInDecimalString + ".ioeData", "r")
+
+        # For each record
+        for recordNumber in range(Data.recordsPerFile):
+        
+            # Make the template / read / verify
+            Data.makeRecordTemplate(UI.filenameInBinary, initialPassNumber, recordNumber)
+            Data.recordData = dfd.read(Data.charsPerRecord)
+            
+            if len(Data.recordData) == 0:
+            
+                UI.dumpDataAndExit("Clean premature EOF", 18)
+
+            # See if data pattern matches
+            badData = Data.recordData != Data.recordTemplate
+            
+            # If bad data after one fixup
+            if (badData) and (fixedPassNumberOnce):
+            
+                UI.dumpDataAndExit("Data compare error after one pass number fixup", 14)
+                
+            # If bad data try a pass number fixup
+            elif (badData) and (not fixedPassNumberOnce):
+            
+                fixedPassNumberOnce = True
+                
+                # See if the data works against last passes' number
+                initialPassNumber -= 1
+                
+                Data.makeRecordTemplate(UI.filenameInBinary, initialPassNumber, recordNumber)
+
+                if Data.recordData != Data.recordTemplate:
+                
+                    UI.dumpDataAndExit("Data compare error after first pass number fixup", 14)                
+                
+        dfd.close()
+        
+        if fixedPassNumberOnce:
+            UI.dumpDataAndExit("Clean file verify after one pass number fixup", 19)
+        else:
+            UI.dumpDataAndExit("Clean file verify", 1)
+
+
+    ########################################
+    #
+    # Make a short file - (18)
+    #
+    ########################################
+    def makeShortFile():
+    
+        dfd = open(UI.dataFileLocation + UI.filenameInDecimalString + ".ioeData", "w")
+
+        while Data.passNumber < Data.passesPerFile:
+        
+            # Always do next pass number
+            Data.passNumber += 1
+
+            # Start at the front of any existing file
+            dfd.seek(0)
+
+            # For records in file
+            for recordNumber in range(Data.recordsPerFile):
+            
+                # Make the template record and write it
+                Data.makeRecordTemplate(UI.filenameInBinary, Data.passNumber, recordNumber)
+                dfd.write(Data.recordTemplate)
+                
+                # Stop after 3 records
+                if recordNumber == 3:
+                    UI.dumpDataAndExit("Create short file", 0)                
+
+
+    ########################################
+    #
+    # Make a file with one passNumber inconsistency - (19)
+    #
+    ########################################
+    def makeOnePassNumberChangeFile():
+    
+        dfd = open(UI.dataFileLocation + UI.filenameInDecimalString + ".ioeData", "w")
+
+        while Data.passNumber < Data.passesPerFile:
+
+            # Always do next pass number
+            Data.passNumber += 1
+
+            # Start at the front of any existing file
+            dfd.seek(0)
+
+            # For records in file
+            for recordNumber in range(Data.recordsPerFile):
+            
+                # Make the template and write it
+                Data.makeRecordTemplate(UI.filenameInBinary, Data.passNumber, recordNumber)
+                dfd.write(Data.recordTemplate)
+                
+                # Exit with partly written file
+                if (Data.passNumber == 3) and (recordNumber == 3):
+                    UI.dumpDataAndExit("Create a one pass number change", 0)                
+
+
+    ########################################
+    #
+    # Make a file with two passNumber inconsistency - (14)
+    #
+    ########################################
+    def makeTwoPassNumberChangeFile():
+    
+        dfd = open(UI.dataFileLocation + UI.filenameInDecimalString + ".ioeData", "w")
+
+        while Data.passNumber < Data.passesPerFile:
+
+            # Always do next pass number
+            Data.passNumber += 1
+
+            # Start at the front of any existing file
+            dfd.seek(0)
+
+            # For records in file
+            for recordNumber in range(Data.recordsPerFile):
+            
+                # Make the template and write it
+                Data.makeRecordTemplate(UI.filenameInBinary, Data.passNumber, recordNumber)
+                dfd.write(Data.recordTemplate)
+                
+                # Exit with partly written file
+                if (Data.passNumber == 3) and (recordNumber == 3):
+
+                    # Put a second pass number discontnuitY in the file
+                    Data.makeRecordTemplate(UI.filenameInBinary, Data.passNumber - 1, recordNumber + 1)
+                    dfd.write(Data.recordTemplate)
+
+                    Data.makeRecordTemplate(UI.filenameInBinary, Data.passNumber - 1, recordNumber + 2)
+                    dfd.write(Data.recordTemplate)
+
+                    Data.makeRecordTemplate(UI.filenameInBinary, Data.passNumber - 2, recordNumber + 3)
+                    dfd.write(Data.recordTemplate)
+
+                    UI.dumpDataAndExit("Create a two pass number change", 0)                
+
 
 if __name__ == "__main__":
-
-    statsThread = None
 
     # Load in this program's code for in-line text processing
     InLineText.getCodeLines()
     
     # Process command line args
     UI.processArgs()
-
-    # Start using the command line args
-    UI.stopTime = time.time() + UI.runTime
     
-    # Open I/O log file for write
-    lffd = open("/var/ioEngine/" + UI.filenameInHexString + ".ioelog", "w")
+    # Init some of the various "Data" variables
+    Data.initDataAttributes()
     
-    # If running at a terminal start stats writer thread
-    if UI.dataFileLocation == "":
-        statsThread = Thread(target = ManageStats.writeStats, daemon = True)
-        statsThread.start()
+    # Track elapsed time
+    UI.startTime = time.time()
 
-    passNumber = 0
+    Data.dumpDetails(dumpData = False)
 
-    while time.time() < UI.stopTime:
-    
-        # Do all the write I/O + verify per pass
-    
-        passNumber += 1
-        ManageStats.passCount = passNumber
+    # These routines all "exit" with specific codes
 
-        #
-        # Write the file first
-        #
-        # Start the pass with the file open for write
-        dfd = io.open(UI.dataFileLocation + UI.filenameInHexString + ".ioedata", "wb", buffering = 0)
+    if UI.normalWriteReadProcessing:
+        UI.writeReadDataFile()
 
-        # Index through all records / blocks in the file
-        blockIndexInFile = 0
-        for recordIndexInFile in range(UI.recordsPerFile):
+    if UI.justVerifyFile:
+        UI.justVerifyDataFile()
 
-            # Start with an empty record
-            recordData = np.array([], dtype = "uint64", copy = False)
-
-            # Fill this record with blocks
-            for blockIndex in range(UI.blocksPerRecord):
-            
-                # Create blocks in record with continuous block numbers
-                # Start with creating a 32 byte fragment to go in a block
-                blockFragment = np.array([UI.filenameInBinary, recordIndexInFile, blockIndexInFile, passNumber], dtype = "uint64", copy = False)
-            
-                # Size fragment up to a full block
-                block = np.resize(blockFragment, (int(UI.bytesPerBlock / 8)))
-            
-                # Add block to current record
-                recordData = np.concatenate([recordData, block], dtype = "uint64", axis = 0)
-
-                blockIndexInFile += 1
-
-            # Write the status record out
-            statusString = f"Write: recordIndex = {recordIndexInFile}; blockIndex = {recordData[2]}; passIndex = {recordData[3]} \n"
-            lffd.write(statusString)
-            
-            # Insert a data compare error if testing
-            # if blockIndexInFile == 6:
-            #     recordData[3] = 157
-                
-            ManageStats.writeStartCount += 1
-            recordData.tofile(dfd)
-            ManageStats.writeEndCount += 1
-            
-            time.sleep(UI.pauseTime)
+    if UI.makePrematureEOF:
+        UI.makeShortFile()
         
-        dfd.close()
-
-
-        #
-        # Now read and compare the file
-        #
-        # Start with a file open for read
-        dfd = io.open(UI.dataFileLocation + UI.filenameInHexString + ".ioedata", "rb", buffering = 0)
-
-        # Index through all records / blocks in the file
-        blockIndexInFile = 0
-        for recordIndexInFile in range(UI.recordsPerFile):
-
-            # Start with an empty template
-            recordTemplate = np.array([], dtype = "uint64", copy = False)
-
-            # Fill this template with blocks
-            for blockIndex in range(UI.blocksPerRecord):
-            
-                # Create blocks in record with continuous block numbers
-                # Start with creating a 32 byte fragment to go in a block
-                blockFragment = np.array([UI.filenameInBinary, recordIndexInFile, blockIndexInFile, passNumber], dtype = "uint64", copy = False)
-            
-                # Size fragment up to a full block
-                block = np.resize(blockFragment, (int(UI.bytesPerBlock / 8)))
-            
-                # Add block to current record
-                recordTemplate = np.concatenate([recordTemplate, block], dtype = "uint64", axis = 0)
-
-                blockIndexInFile += 1
-
-            # Log / get next record from the file sequentially
-            statusString = f"Read: recordIndex = {recordIndexInFile}; blockIndex = {recordTemplate[2]}; passIndex = {recordTemplate[3]} \n"
-            lffd.write(statusString)
-            
-            ManageStats.readStartCount += 1
-            recordData = np.fromfile(dfd, dtype = "uint64", count = int(UI.bytesPerBlock / 8) * UI.blocksPerRecord)
-            ManageStats.readEndCount += 1
-            
-            time.sleep(UI.pauseTime)
-            
-            if not np.array_equal(recordData, recordTemplate):
-
-                lffd.write("Data compare error: \n")
-                
-                lffd.write("Record in template: \n")
-                lffd.write(str(recordTemplate) + "\n")
-                lffd.write("Record in file: \n")
-                lffd.write(str(recordData) + "\n")
-                lffd.write("<EOF> \n")
-                
-                lffd.close()
-                os.rename("/var/ioEngine/" + UI.filenameInHexString + ".ioelog", "/var/ioEngine/" + UI.filenameInHexString + ".stop")
-                
-                print ("Data compare error: \n")
-                
-                print ("Record in template: \n")
-                print (str(recordTemplate) + "\n")
-                print ("Record in file: \n")
-                print (str(recordData) + "\n")
-
-                exit (1)
-
-        dfd.close()
-
-    lffd.truncate(0)
-    lffd.close()
-    
-    # If we are at a terminal stop the staats thread
-    if UI.dataFileLocation == "":
-        ManageStats.stopLoop = True
-        statsThread.join()
+    if UI.makeOnePassNumberChange:
+        UI.makeOnePassNumberChangeFile()
         
-    exit (0)
-
+    if UI.makeTwoPassNumberChange:
+        UI.makeTwoPassNumberChangeFile()
+    
 
 """ - Help
-
-ioEngine (Phase I) - Do and verify I/O to a file-oriented destination. This was developed 
-for testing nfs mounts but it can be used to doing I/O to any file-oriented destination. 
-
-It can be run by hand and, it is also designed to be run by a "test platform" that runs many 
-instances of it in a specific way and monitors if the instances complete normally or fail.
-
-When it runs it will indicate:
-
-    - Normal completion
-
-    - Completion because of failing I/O calls (not yet!!!)
-    
-    - Completion because of data compare errors
-    
-Files (descriptors) used:
-
-    dfd = Data file descriptor: Where the data thats written and read / verified goes - 
-        as specified on the command line.
-    <stdout> - Status file - written to the terminal to show progress when run from the terminal
-    <stdout> - Written to on (data compare) error
-    lffd - Written to on (data compare) error
-
-Example command line:
-
-    ./ioEngine <file path>/0x1234
-    
-    - <file path> can be any reachable destination on the host it's running on
-
-    - The hex filename can be any value between '0x0' and '0xffffffffffffffff' (uint64).
-    
-    - The filename re-formatted and made into a hex string, padded with leading zeroes, a 
-      "0x" is prepended and ".ioe" is appended to make the full file name.
-    
-    - The intent is that the hex filenames is unique and assigned by the "test platform" as
-      it starts multiple instances of the utility.
-    
-
-The default I/O operating parameters right now are:
-    
-    runTime = 15
-    pauseTime = 0.01
-    bytesPerBlock = 1024
-    blocksPerRecord = 3
-    recordsPerFile = 10
-    
-
-A status file is generated on the host it's running on and also printed to stdout, so it can also
-be logged when an error occurs:
-    
-    - /var/ioEngine/0x0000000000001234.status - Attributes of the last I/O attempted (work 
-      is underway to capture the error code in the case of a failure).
-    
-    - If the ".status" file length is zero the ioEngine instance completed normally.
-    
-    - If the filename extension is ".stop" a data compare error occurred and the contents of 
-      the status file contains informataion about the error.
-    
-
-Futures:
-
-    - Pass I/O operating parameters in on the command line. (--rt=nnn for run time so far)
-    
-    - Embed I/O operating parameters in the .ioe data file so it can be independently 
-      verified.
-    
-    - Add support for system failures to be detected, analyzed and reacted to.
-    
-    - Analyze the data corruption and provide an "od" command to dump it exactly.
-
+TBD
 """

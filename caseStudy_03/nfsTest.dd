@@ -15,6 +15,12 @@ defineUnary     gStartTime              0           # Overall start time
 defineUnary     gIOEngineNumber         0           # Unique ioEngine file names
 defineUnary     gAllStop                False       # Something happened - stop as fast as possisble
 
+defineUnary     gScriptRunning          False       # A few things depend on this
+defineUnary     gScriptFileName         ""          # Script file name
+defineUnary     gScriptCurrentLineNumber 0          # Current line number
+defineUnary     gScriptMaxLineNumber    0           # Number of lines in the script file
+defineUnary     gScriptCommand          ""          # Painted on the screen if it's there
+
 #
 # Manage various entities - we always have test hosts
 #
@@ -28,7 +34,15 @@ defineColumn    gHost_State             "Inactive"  # Test hosts can be Inactive
 defineColumn    gHost_ExportFSUseCount  0           # Number of exported FS on this host
 defineColumn    gHost_ImportFSUseCount  0           # Number of imported FS on this host
 defineColumn    gHost_FSUserUseCount    0           # Number of FS users on this host
-defineColumn    gHost_IOCount           0           # Number of complete I/Os on this host  
+defineColumn    gHost_ForceDataCompareError False   # Used to trigger one data compare error in ioEngine
+
+defineColumn    gHost_OKWRCount         0           # Number of OK write / read I/Os on this host
+defineColumn    gHost_OKVerifyCount     0           # OK result from ioEngine --vf
+defineColumn    gHost_BadConnCount      0           # Paramiko connection errors received on this host
+defineColumn    gHost_PrematureEOFCount 0           # "Short" file found
+defineColumn    gHost_EmptyFileCount    0           # File with no data
+defineColumn    gHost_MissingFileCount  0           # Aborted I/O leaves no file
+
 defineColumn    gHost_RowStatus         None
 endTable
 

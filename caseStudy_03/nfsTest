@@ -526,7 +526,6 @@ class Platform:
     
     sudo -S apt -y update
     sudo -S apt -y install python3-pip
-    sudo -S pip3 install numpy
     sudo -S apt -y install nfs-kernel-server
     sudo -S systemctl restart nfs-kernel-server
     sudo -S systemctl status ssh
@@ -667,9 +666,6 @@ class UI:
                 print (f" Clean out '/etc/fstab' on {gHost_Name[hostRef]}")
                 HostComm.executeOnOneHostWithWait(hostRef, \
                     f"echo {gPassword[0]} | sudo -S ./removeALine /etc/fstab nfsTest")
-                print (f" Clean out '/etc/ioEngine/* on {gHost_Name[hostRef]}")
-                HostComm.executeOnOneHostWithWait(hostRef, \
-                    f"echo {gPassword[0]} | sudo -S rm -rf /var/ioEngine")
 
             # Un-export all nfsTest shares, restart the servers and delete the shared directories
             for hostRef in range(len(gHost_RowStatus)):
@@ -720,8 +716,9 @@ class UI:
         if cleanAgain:
             cleanIt()
             
-        print ("")
-        input (" Hit Enter to continue: ")
+        if not gScriptRunning[0]:
+            print ("")
+            input (" Hit Enter to continue: ")
 
     # Process user input
     def processCommand(command):
@@ -737,7 +734,11 @@ class UI:
             
         elif command == "cleanall":
 
+            MasterLock.lock()
+
             UI.cleanAll()
+
+            MasterLock.unlock()
 
 
         elif command == "put":
@@ -814,7 +815,7 @@ class UI:
         
             MasterLock.lock()
             
-            Configurator.activateAllInactiveResourcces()
+            Configurator.activateAllInactiveResources()
 
             MasterLock.unlock()
 
@@ -837,14 +838,12 @@ class UI:
             args = command.split()
             if len(args) == 2:
                 hostRef = int(args[1])
-                for fsUserRef in range(len(gFSUser_RowStatus)):
-                    if gFSUser_gHost_Ref[fsUserRef] == hostRef:
-                        gFSUser_ForceFailure[fsUserRef] = True
+                gHost_ForceDataCompareError[hostRef] = True
             MasterLock.unlock()
             
 
         # Start a thread to Deactivate a given host. The thread spawned below does the actual work.
-        elif command[0:4] == "dea ":
+        elif command.startswith("dea "):
         
             MasterLock.lock()
             
@@ -866,8 +865,72 @@ class UI:
             MasterLock.unlock()
 
 
-        # Activate an Inactive host
-        elif command[0:4] == "act ":
+        # Start a thread to Deactivate a given host. The thread spawned below does the actual work.
+        elif command.startswith("script "):
+        
+            MasterLock.lock()
+            
+            gScriptRunning[0] = True
+            
+            args = command.split()
+            if len(args) == 2:
+                fileName = args[1]
+
+            # Get the input file as a list of lines
+            inLines = open(fileName + ".scr", "r").read().splitlines()
+            gScriptFileName[0] = fileName + ".scr"
+
+            Configurator.scriptThread = Thread(target = Configurator.scriptEngine, \
+                name = "Script engine", args = [inLines,])
+            Configurator.scriptThread.start()
+                    
+            MasterLock.unlock()
+            
+        # Wait for host to go Active
+        elif command.startswith("waa "):
+
+            MasterLock.lock()
+            
+            args = command.split()
+            if len(args) == 2:
+                hostRef = int(args[1])
+                while gHost_State[hostRef] != "Active":
+                
+                    MasterLock.unlock()
+                    time.sleep(5)
+                    MasterLock.lock()
+
+            MasterLock.unlock()
+
+
+        # Wait for host to go Inactive
+        elif command.startswith("wai "):
+
+            MasterLock.lock()
+            
+            args = command.split()
+            if len(args) == 2:
+                hostRef = int(args[1])
+                while gHost_State[hostRef] != "Inactive":
+                
+                    MasterLock.unlock()
+                    time.sleep(5)
+                    MasterLock.lock()
+
+            MasterLock.unlock()
+
+
+        # Wait some time
+        elif command.startswith("wait "):
+
+            args = command.split()
+            if len(args) == 2:
+                sleepTime = int(args[1])
+                time.sleep(sleepTime)
+
+
+        # Activate an Inactive host as a client or server
+        elif command.startswith("acts ") or command.startswith("actc "):
         
             MasterLock.lock()
             
@@ -876,8 +939,7 @@ class UI:
                 hostRef = int(args[1])
                 if gHost_State[hostRef] == "Inactive":
                 
-                    answer = input("Enter 'y' for Client else Server: ")
-                    if answer == "y":
+                    if command.startswith("actc "):
                         gHost_Role[hostRef] = "Client"
                     else:
                         gHost_Role[hostRef] = "Server"
@@ -931,9 +993,9 @@ class UI:
         # Dump FSUser rows
         elif command == "dur":
             if UI.dumpToFile:
-                gFSUSer_DumpRows(outFile = open("dur", "w"))
+                gFSUser_DumpRows(outFile = open("dur", "w"))
             else:
-                gFSUSer_DumpRows()
+                gFSUser_DumpRows()
             print ("")
             input (" Hit Enter to continue from the dump: ")
 
@@ -977,9 +1039,10 @@ class UI:
             displayLines += " dhr / der / dir / dur = Dump hosts / exportFS / importFS / FSUser rows \n"
             displayLines += " insw / cleanall       = Install sw / clean test hosts \n"
             displayLines += " ecmd / dtf/dts        = Execute command(s) on test host(s) / dump to screen/file \n"
-            displayLines += " ss / aa               = Start all SMs / activate all SMs \n"
+            displayLines += " ss / aa / script ...  = Start all SMs / activate all SMs / run script \n"
             displayLines += " rh n / ff n           = Reboot host n / force data compare fault host n \n"
-            displayLines += " dea n / act n         = Deactivate host n / activate host n \n"
+            displayLines += " dea n / acts/c n      = Deactivate host n / activate host svr/cli n \n"
+            displayLines += " waa n / wai n / wait  = Wait for Active / Inactive host / just wait seconds \n"
             displayLines += " help                  = Print help on the screen \n"
             displayLines += " \n"
             displayLines += f" Command #0 .. #5 = '{UI.lastCommand[0]}' | '{UI.lastCommand[1]}' | '{UI.lastCommand[2]}' | '{UI.lastCommand[3]}' | '{UI.lastCommand[4]}' | '{UI.lastCommand[5]}' \n"
@@ -1013,14 +1076,17 @@ class UI:
                 print ("")
 
             i = ""
-            if not UI.firstTime:
-                # Get any user input and also pause for 2 seconds
-                print (" Type a command from the menu above then hit Enter:")
-                i, o, e = select.select([sys.stdin], [], [], 2)
-            else:
+            if gScriptRunning[0]:
+                print (f" Script details: [{gScriptFileName[0]}: {gScriptCurrentLineNumber[0]}/{gScriptMaxLineNumber[0]} - {gScriptCommand[0]}]")
+                print ("")
                 time.sleep(2)
+            elif UI.firstTime:
+                time.sleep(2)
+            else:# Get any user input and also pause for 2 seconds
+                print (f" Type a command from the menu above then hit Enter:")
+                i, o, e = select.select([sys.stdin], [], [], 2)
 
-                # No longer the first time
+            # No longer the first time
             UI.firstTime = False
             
             # If some input
@@ -1072,6 +1138,8 @@ class Configurator:
     perHostDeactivatorThreads = []              # Each thread is run against a host
     deactivatorThreadCount = None               # To advertize in the display
     
+    scriptThread = None                         # The script engine runs on this
+    
     # These are set by entries in the nfsTest.conf file. They control the size and shape
     # of the configuration being tested and the rate at which it operates
     exportFSPerHost = None
@@ -1080,8 +1148,33 @@ class Configurator:
     # Wait time per SM thread (randomized at point of use)
     secondsPerStateTransition = 5
 
+    # Script engine thread code
+    def scriptEngine(inLines):
+    
+        gScriptMaxLineNumber[0] = len(inLines)
+    
+        # For each line
+        lineNumber = 0
+        for inLine in inLines:
+            lineNumber += 1
+        
+            if "#" in inLine:
+                (inLine, dummy) = inLine.split("#", 1)
+
+            inLine = inLine.strip()
+            if inLine:
+            
+                gScriptCurrentLineNumber[0] = lineNumber
+                gScriptCommand[0] = inLine
+                UI.processCommand(inLine)
+            
+        gScriptRunning[0] = False
+
+        return
+
+
     # Activate all Inactive SMs
-    def activateAllInactiveResourcces():
+    def activateAllInactiveResources():
     
         for hostRef in range(len(gHost_RowStatus)):
             if gHost_State[hostRef] == "Inactive":
@@ -1127,8 +1220,8 @@ class Configurator:
     #
     # Keep trying to connect to the host if necessary and then communicate with it
     #
-    def talkToHost(hostConnRef, hostRef, command, checkRetcode = True):
-
+    def talkToHost(hostConnRef, hostRef, command, stopOnError = True):
+    
         # If there's no active host connection keep trying to get one
         while Configurator.testHostConnections[hostConnRef] is None:
 
@@ -1151,11 +1244,11 @@ class Configurator:
 
         retcode = o.channel.recv_exit_status()
         
-        if checkRetcode and retcode:
+        if retcode:
         
-            logging.info(f"Execute on {gHost_Name[hostRef]}; {command} failed !!!!!!!!!!!!!!!!!!!!")
-            logging.info(f"Execute on {gHost_Name[hostRef]}; {command} failed !!!!!!!!!!!!!!!!!!!!")
-            logging.info(f"Execute on {gHost_Name[hostRef]}; {command} failed !!!!!!!!!!!!!!!!!!!!")
+            logging.info(f"Execute on {gHost_Name[hostRef]}; {command} has a retcode !!!!!!!!!!!!!!!!!!!!")
+            logging.info(f"Execute on {gHost_Name[hostRef]}; {command} has a retcode !!!!!!!!!!!!!!!!!!!!")
+            logging.info(f"Execute on {gHost_Name[hostRef]}; {command} has a retcode !!!!!!!!!!!!!!!!!!!!")
 
             logging.info("")
             logging.info(f"retcode = {retcode}")
@@ -1168,19 +1261,16 @@ class Configurator:
             logging.info("")
             logging.info(f"stderr = {e.read().decode()}")
             logging.info("")
-            logging.info(f"retcode = {retcode}")
-            logging.info("")
-            logging.info(f"Output above from {gHost_Name[hostRef]}")
-            logging.info("")
             
-            print ("")
-            print ("Stopping after getting a command error on host #{hostRef}.")
-            print ("See nfsTest.log for details.")
-            print ("")
-            gAllStop[0] = True
-            time.sleep(100000)            
+            if stopOnError:
+                print ("")
+                print (f"Stopping after getting a command error on host #{hostRef}.")
+                print ("See nfsTest.log for details.")
+                print ("")
+                gAllStop[0] = True
+                time.sleep(100000)            
 
-        return (o.read().decode())
+        return (o.read().decode(), e.read().decode(), retcode)
 
     # Count States from all SM rows
     def countRowStates():
@@ -1223,23 +1313,38 @@ class Configurator:
         displayLines += " Active             %4d         %4d         %4d         %4d \n" % (gHostActive[0], gExportFSActive[0], gImportFSActive[0], gFSUserActive[0])
         displayLines += " Deactivating       %4d         %4d         %4d         %4d \n" % (gHostDeactivating[0], gExportFSDeactivating[0], gImportFSDeactivating[0], gFSUserDeactivating[0])
         displayLines += " Rebooting          %4d         %4d         %4d         %4d \n" % (gHostRebooting[0], gExportFSRebooting[0], gImportFSRebooting[0], gFSUserRebooting[0])
-        displayLines += " SM Threads         %4d         %4d         %4d         %4d \n" % (gHostSMThreadCount[0], gExportFSSMThreadCount[0], gImportFSSMThreadCount[0], gFSUserSMThreadCount[0])
+        displayLines += " \n"
+        displayLines += " SM Threads  >>>>   %4d         %4d         %4d         %4d \n" % (gHostSMThreadCount[0], gExportFSSMThreadCount[0], gImportFSSMThreadCount[0], gFSUserSMThreadCount[0])
         displayLines += " \n"
         
-        displayLines += " Per Host         Host          Host     ExportFS   ImportFS   FSUser  Finished  \n"
-        displayLines += " Info             Role          State    Use Cnt    Use Cnt    Use Cnt I/O Count \n"
-        displayLines += " -------          ----          -----    --------   --------   ------- --------- \n"
+        displayLines += "                                                                     Norm  Abrt    OK  Prem Empty    No       \n"
+        displayLines += " Per Host     Host          Host     ExportFS   ImportFS   FSUser     I/O  Conn   Vfy   EOF  File  File   Tot \n"
+        displayLines += " Info         Role          State    Use Cnt    Use Cnt    Use Cnt    Cnt   Cnt   Cnt   Cnt   Cnt   Cnt   Cnt \n"
+        displayLines += " -------      ----          -----    --------   --------   ------- ------  ----   ---------------------   --- \n"
         
         for hostRef in range(len(gHost_RowStatus)):
-            displayLines += "%8s      %8s   %12s        %4d       %4d      %4d      %4d \n" % \
-                (gHost_Name[hostRef], \
+            displayLines += "%8s  %8s   %12s        %4d       %4d      %4d   %4d  %4d  %4d  %4d  %4d  %4d  %4d \n" % \
+               (gHost_Name[hostRef], \
                 gHost_Role[hostRef], \
                 gHost_State[hostRef], \
+                
                 gHost_ExportFSUseCount[hostRef], \
                 gHost_ImportFSUseCount[hostRef], \
                 gHost_FSUserUseCount[hostRef], \
-                gHost_IOCount[hostRef])
-                    
+                
+                gHost_OKWRCount[hostRef], \
+                gHost_BadConnCount[hostRef], \
+                gHost_OKVerifyCount[hostRef], \
+                gHost_PrematureEOFCount[hostRef], \
+                gHost_EmptyFileCount[hostRef], \
+                gHost_MissingFileCount[hostRef], \
+                
+                gHost_OKVerifyCount[hostRef] + \
+                gHost_PrematureEOFCount[hostRef] + 
+                gHost_EmptyFileCount[hostRef] + \
+                gHost_MissingFileCount[hostRef])
+
+
         return (displayLines)
     
     ###???
@@ -1437,8 +1542,10 @@ class Configurator:
                 elif gHost_State[hostRef] == "Rebooting":
                 
                     Configurator.testHostConnections[hostConnRef] = None
+                    #Configurator.talkToHost(hostConnRef, hostRef, \
+                    #    f"echo {gPassword[0]} | sudo -S shutdown -r now", stopOnError = False)
                     Configurator.talkToHost(hostConnRef, hostRef, \
-                        f"echo {gPassword[0]} | sudo -S shutdown -r now", checkRetcode = False)
+                        f"echo {gPassword[0]} | sudo -S reboot", stopOnError = False)
                         
                     time.sleep(3)
 
@@ -1479,6 +1586,27 @@ class Configurator:
                 
                     pass
 
+                # Reboot right away and wait for the connection to start working again
+                elif gHost_State[hostRef] == "Rebooting":
+                
+                    Configurator.testHostConnections[hostConnRef] = None
+                    #Configurator.talkToHost(hostConnRef, hostRef, \
+                    #    f"echo {gPassword[0]} | sudo -S shutdown -r now", stopOnError = False)
+                    Configurator.talkToHost(hostConnRef, hostRef, \
+                        f"echo {gPassword[0]} | sudo -S reboot", stopOnError = False)
+                        
+                    time.sleep(3)
+
+                    # Unlock so screen updates. No one messes with a Rebooting host.
+                    MasterLock.unlock()
+                    
+                    Configurator.testHostConnections[hostConnRef] = None
+                    Configurator.talkToHost(hostConnRef, hostRef, f"echo {gPassword[0]} | sudo -S date")
+
+                    MasterLock.lock()
+                    
+                    gHost_State[hostRef] = "Active"
+                        
                 # If deactivating a client, first wait for its dependent use counts to go to zero
                 elif (gHost_State[hostRef] == "Deactivating") and \
                      (gHost_ImportFSUseCount[hostRef] == 0) and \
@@ -1620,11 +1748,8 @@ class Configurator:
                 f"echo {gPassword[0]} | sudo -S mount -o actimeo=5 {gHost_IP[gExportFS_gHost_Ref[exportFSRef]]}:/var/nfsTest/{gExportFS_Name[exportFSRef]} /nfsTest/{gImportFS_Name[importFSRef]}")
 
             Configurator.talkToHost(hostConnRef, clientHostRef, \
-                f"echo {gPassword[0]} | sudo -S ./appendALine /etc/fstab '{gHost_IP[gExportFS_gHost_Ref[exportFSRef]]}:/var/nfsTest/{gExportFS_Name[exportFSRef]}  {gImportFS_Name[importFSRef]}  nfs auto,nofail,noatime,nolock,intr,tcp,actimeo=5 0 0'")
+                f"echo {gPassword[0]} | sudo -S ./appendALine /etc/fstab '{gHost_IP[gExportFS_gHost_Ref[exportFSRef]]}:/var/nfsTest/{gExportFS_Name[exportFSRef]}  /nfsTest/{gImportFS_Name[importFSRef]}  nfs auto,nofail,noatime,nolock,intr,tcp,actimeo=5 0 0'")
 
-            Configurator.talkToHost(hostConnRef, clientHostRef, \
-                f"echo {gPassword[0]} | sudo -S mkdir -p /var/ioEngine")
-                
             return
     
         def destroyImportFS():
@@ -1635,7 +1760,7 @@ class Configurator:
                 f"echo {gPassword[0]} | sudo -S umount /nfsTest/{gImportFS_Name[importFSRef]}")
 
             Configurator.talkToHost(hostConnRef, clientHostRef, \
-                f"echo {gPassword[0]} | sudo -S ./removeALine /etc/fstab '{gHost_IP[gExportFS_gHost_Ref[exportFSRef]]}:/var/nfsTest/{gExportFS_Name[exportFSRef]}  {gImportFS_Name[importFSRef]}'")
+                f"echo {gPassword[0]} | sudo -S ./removeALine /etc/fstab '{gHost_IP[gExportFS_gHost_Ref[exportFSRef]]}:/var/nfsTest/{gExportFS_Name[exportFSRef]}  /nfsTest/{gImportFS_Name[importFSRef]}'")
 
             Configurator.talkToHost(hostConnRef, clientHostRef, \
                 f"echo {gPassword[0]} | sudo -S rm -rf /nfsTest/{gImportFS_Name[importFSRef]}")
@@ -1723,6 +1848,134 @@ class Configurator:
         clientHostRef = gImportFS_gHost_Ref[importFSRef]    # The host we are running on
         serverHostRef = gExportFS_gHost_Ref[exportFSRef]    # The host our exported FS is running on
         
+        #
+        # From ioEngine comments:
+        #
+        # returnCode = 0           !          # Perfect result in w/r logic (+)
+        # returnCode = 1           !          # Perfect verify of existing file (+)
+        # returnCode = 14          --14       # Bad pass number after fixing it once (X)
+        # returnCode = 15          !          # File too large (X)
+        # returnCode = 16          !          # Data compare error in w/r logic (X)
+        # returnCode = 17          !          # Data compare error in verification logic (X)
+        # returnCode = 18          --18       # Clean premature EOF (+)
+        # returnCode = 19          --19       # Fixed pass number once -  clean (+)
+        # returnCode = 20          !          # Missing file (+)
+        # returnCode = 21          !          # Empty file (+)
+        # returnCode = 22          !          # Bad file start (X)
+
+        #
+        # X = Stop after failure
+        # + = Count in platform UI
+        # ! = Verify by hand
+        # --nn = Generate bad file
+        #
+        # Do I/O on an active file system
+        # 
+        # Enter and leave locked but unlock for the actual I/O
+        #
+        def doIO():
+
+            # Get directory name so we can pull parts of ioEngine file name out
+            destPath = f"/nfsTest/{gImportFS_Name[importFSRef]}/"
+            
+            # Get a local copy of the file number and bump the number
+            fileNum = gIOEngineNumber[0]            
+            gIOEngineNumber[0] += 1
+
+             # Force exactly one data compare error if set
+            ff = ""
+            if gHost_ForceDataCompareError[clientHostRef]:
+                ff = "--ff"
+                gHost_ForceDataCompareError[clientHostRef] = False
+            
+            # Do a write/read I/O with no lock
+            MasterLock.unlock()
+            
+            logging.info(f"Use FS user #{fsUserRef}; name = {gFSUser_Name[fsUserRef]}; state = {gFSUser_State[fsUserRef]}")
+            
+            Configurator.testHostConnections[hostConnRef] = None
+            (o, e, r) = Configurator.talkToHost(hostConnRef, clientHostRef, \
+                f"echo {gPassword[0]} | sudo -S ./ioEngine --mp=10 {ff} {destPath}/{fileNum}", \
+                stopOnError = False)
+            
+            MasterLock.lock()
+            
+            # Handle the possible returns frfom the main write/read ioEngine run            
+            # A perfectly normal ioEngine write / read pass return code
+            if r == 0:
+                verifyDataFile = False
+                gHost_OKWRCount[clientHostRef] += 1
+
+            # Stop on data compare error
+            elif r == 16:
+                print ("")
+                print ("Stopping after data compare error in ioEngine write / read logic. See nfsTest.log.")
+                print ("")
+                gAllStop[0] = True
+                time.sleep(100000)
+
+            # A Paramiko "connection loss" error
+            elif r == -1:
+                verifyDataFile = True
+                gHost_BadConnCount[clientHostRef] += 1
+                
+                # Wait for the host to come back on line
+                MasterLock.unlock()
+                
+                Configurator.testHostConnections[hostConnRef] = None
+                (o, e, r) = Configurator.talkToHost(hostConnRef, clientHostRef, \
+                    f"echo {gPassword[0]} | sudo -S date")
+                
+                MasterLock.lock()
+                
+            # Stop on unknown write / read error code
+            else:
+                print ("")
+                print ("Stopping after unknown return code from ioEngine write / read logic. See nfsTest.log.")
+                print ("")
+                print (f"{gHost_Name[clientHostRef]}: retcode = {r}")
+                print ("")
+                gAllStop[0] = True
+                time.sleep(100000)
+
+            # If we need to verify any existing file on the mounted file system
+            if verifyDataFile:
+            
+                MasterLock.unlock()
+                
+                Configurator.testHostConnections[hostConnRef] = None
+                (o, e, r) = Configurator.talkToHost(hostConnRef, clientHostRef, \
+                    f"echo {gPassword[0]} | sudo -S ./ioEngine --vf {destPath}/{fileNum}", \
+                    stopOnError = False)
+                
+                MasterLock.lock()
+                
+                # Clean verify
+                if r == 1:
+                    gHost_OKVerifyCount[clientHostRef] += 1
+                    
+                # "Short" file
+                elif r == 18:
+                    gHost_PrematureEOFCount[clientHostRef] += 1
+                    
+                # Empty file
+                elif r == 20:
+                    gHost_MissingFileCount[clientHostRef] += 1
+                    
+                elif r == 21:
+                    gHost_EmptyFileCount[clientHostRef] += 1
+                    
+                else:
+                    print ("")
+                    print ("Stopping after unknown return from ioEngine --vf operation. See nfsTest.log.")
+                    print ("")
+                    print (f"{gHost_Name[clientHostRef]}: retcode = {r}")
+                    print ("")
+                    gAllStop[0] = True
+                    time.sleep(100000)
+
+            return
+        
         # FSUser actions
         while not gAllStop[0]:
         
@@ -1760,29 +2013,8 @@ class Configurator:
                 # If managing an active FS user start I/O and wait for it to finish
                 elif gFSUser_State[fsUserRef] == "Active":
                
-                    # Get directory name so we can pull parts of ioEngine file name out
-                    destPath = f"/nfsTest/{gImportFS_Name[importFSRef]}/"
-                    
-                    fileNum = gIOEngineNumber[0]
-                    gIOEngineNumber[0] += 1
-                    
-                    # Force exactly one data compare error in given fsUser SM
-                    ff = ""
-                    if gFSUser_ForceFailure[fsUserRef]:
-                        ff = "--ff"
-                        gFSUser_ForceFailure[fsUserRef] = False
-                    
-                    # Do / keep doing I/O with no lock
-                    MasterLock.unlock()
-                    
-                    logging.info(f"Use FS user #{fsUserRef}; name = {gFSUser_Name[fsUserRef]}; state = {gFSUser_State[fsUserRef]}")
-                    
-                    Configurator.testHostConnections[hostConnRef] = None
-                    Configurator.talkToHost(hostConnRef, clientHostRef, f"echo {gPassword[0]} | sudo -S ./ioEngine --rt=15 {ff} {destPath}/0x{fileNum}")
-                    
-                    MasterLock.lock()
-                    
-                    gHost_IOCount[clientHostRef] += 1
+                    # This unlocks (only) during the actial I/O (write/read) and verification operations
+                    doIO()
                 
                 # If destroying an FS user
                 elif (gFSUser_State[fsUserRef] == "Deactivating"):
@@ -1873,13 +2105,9 @@ This code sets up and randomly activates / deactivates a set of hosts running NF
 workloads. While that is happening any random host can be stressed: rebooted or have its 
 "role" (client or server) swapped.
 
-If a server host is rebooted no clients / workloads should notice. If a client host is 
+If a server host is rebooted no client workloads should notice. If a client host is 
 rebooted the workload on that client should cease operation and have to be accounted for 
-approprietely at the end of a cycle.
-
-Note the role of the stressors here: We are looking to stress the NFS aspect but the 
-test platform must continue when the stressors are applied and after they are recovered 
-from.
+approprietely when it starts to run again after recovery.
 
 
 Program operation
@@ -1888,26 +2116,26 @@ Program operation
 The goal here is to test a system as it grows and shrinks. Rather than create and delete 
 table rows and stop and start threads while the test is under way we build a system that 
 has enough hosts, a data store that has enough rows and a test platform with enough 
-threads to stand up the biggest system desired. We manage the rows / threads with a 
-state machine.
+running threads to stand up the biggest system desired. We manage the rows / threads with 
+a cooperating set of state machines.
 
-{xxx} = See the nfsTest.conf file for the given variable values
+{xxx} = See the nfsTest.conf file for the given variable names and values.
 
-Execution starts by discovering the control host (localhost) and test hosts per 
-{testhostIdentifier}. Each test host gets a gHost row and initial NFS roles 
-{serverCount} / {clientCount} are assigned.
+Execution starts by discovering the test hosts per {testhostIdentifier} rows in 
+nfsTest.conf. Each test host gets a gHost row and initial NFS roles {serverCount} / 
+{clientCount} are assigned.
 
-The "ss" command creates (gHost - it's done above), gExportFS, gImportFS and gFSUser 
-rows and it then creates a thread against each row to "execute" the state machine. The 
-{exportFSPerHost} and {fsUserPerImportFS} (plus all exported file systems are imported 
-on all clients) give the running system its maximum "size and shape".
+The "ss" command creates gExportFS, gImportFS and gFSUser rows and it then creates a 
+thread against each row to "execute" the state machine. The {exportFSPerHost} and 
+{fsUserPerImportFS} (plus all exported file systems are imported on all clients) give the 
+running system its maximum "size and shape".
 
-When the FSUser resource is running the ioEngine utility is run against its assigned 
+While the FSUser resource is running the ioEngine utility is run against its assigned 
 imported FS. If it gets an I/O error or a data compare error it will stop the platform.
 
-The SMs are started in Inactive state (st) at the UI. When desired they are (all) moved 
-to Activating state (aa) from the UI and the platform "comes alive". After that reboot 
-(rh), swap host (sh) and "force fault" (ff) operations are available at the UI.
+The SMs are started in Inactive state at the UI. When directed they are (all) moved to 
+Activating state (aa) from the UI and the platform "comes alive". After that a number of 
+actions are available at the UI.
 
 
 Use counts
@@ -1929,24 +2157,26 @@ at the same time and check the index variable is "correct".
 Host communication
 ==================
 
-Paramiko connections are not thread safe. At startup and "setup" time the main thread uses 
-class HostComm to work with the control host (HostComm.controlHostConnection) and test hosts 
-(HostComm.testHostConnections[]) to clean and install software. No extra threads are used.
+Paramiko connections are not thread safe. At startup and "setup" time the main thread 
+uses class HostComm to work with the control host (HostComm.controlHostConnection) and 
+test hosts (HostComm.testHostConnections[]) to clean and install software. No extra 
+threads are used.
 
-When a test is started each thread that's spawned generates it's own connection object to the 
-hosts it needs to work with (Configurator.testHostConnections[] and Configurator.talkToHost). 
-If Configurator.testHostConnections is None the test host connection is renewed.
+When a test is started each thread that's spawned generates it's own Paramiko connection 
+object to the hosts it needs to work with (Configurator.testHostConnections[xxx] and 
+Configurator.talkToHost). If Configurator.testHostConnections[xxx] is None the test host 
+connection is renewed.
 
 NOTE: NONE of the above variables are "gDS" variables.
 
-Also, ssh has a limit of 10 connection attempts per second. We handle this by only connecting 
-to a host when we need to.
+Also, ssh has a limit of 10 connection attempts per second. We handle this by only 
+connecting to a host when we need to.
 
 
 ioEngine
 ========
 
-This does I/O on the mounted file system and looks for I/O or data compare errors. See it 
-for more details.
+This does I/O on the mounted file system and looks for I/O or data compare errors. See 
+it for more details.
 
 """
