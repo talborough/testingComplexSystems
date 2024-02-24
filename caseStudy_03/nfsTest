@@ -594,8 +594,8 @@ class Platform:
                             
                 print ("")
 
-        print ("")
-        input (" Hit Enter to continue: ")
+                print ("")
+                input (" Hit Enter to continue: ")
 
         return
 
@@ -786,6 +786,7 @@ class UI:
                                 print ("")
                                 print (f"Output from {gHost_Name[hostRef]} / {gHost_Identifier[hostRef]} / {gHost_IP[hostRef]} / {gHost_Hostname[hostRef]}")
                                 print ("")
+                                input("Hit Enter to continue: ")
 
 
         # Install necessary software packages on selected hosts
@@ -1039,7 +1040,7 @@ class UI:
             displayLines += " dhr / der / dir / dur = Dump hosts / exportFS / importFS / FSUser rows \n"
             displayLines += " insw / cleanall       = Install sw / clean test hosts \n"
             displayLines += " ecmd / dtf/dts        = Execute command(s) on test host(s) / dump to screen/file \n"
-            displayLines += " ss / aa / script ...  = Start all SMs / activate all SMs / run script \n"
+            displayLines += " ss / aa / script One  = Start all SMs / activate all SMs / run script One.scr \n"
             displayLines += " rh n / ff n           = Reboot host n / force data compare fault host n \n"
             displayLines += " dea n / acts/c n      = Deactivate host n / activate host svr/cli n \n"
             displayLines += " waa n / wai n / wait  = Wait for Active / Inactive host / just wait seconds \n"

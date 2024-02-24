@@ -21,6 +21,8 @@ diff $1 ~/testingComplexSystems/caseStudy_03/nfsTest              ~/dev_remote/n
 echo ======================================================
 diff $1 ~/testingComplexSystems/caseStudy_03/nfsTest.dd           ~/dev_remote/nfsTest.dd
 echo ======================================================
+diff $1 ~/testingComplexSystems/caseStudy_03/One.scr              ~/dev_remote/One.scr
+echo ======================================================
 diff $1 ~/testingComplexSystems/dev_code/diff_em                  ~/dev_remote/diff_em
 echo ======================================================
 diff $1 ~/testingComplexSystems/caseStudy_01/CS01_Notes.txt       ~/dev_remote/CS01_Notes.txt

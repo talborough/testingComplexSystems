@@ -26,6 +26,8 @@ Review .dd file:
     Column names format
     Reference column format
     Index column format
+    Name column
+    RowStatus column (last)
     Unary data items
    
     
@@ -40,6 +42,4 @@ Run gDSCodeGen to produce the .py file:
     
 Review animalFarm_01 code and execution (2 passes)
 
-
-
-    
+Note how concurrency is managed.

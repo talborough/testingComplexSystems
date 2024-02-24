@@ -1,0 +1,132 @@
+#
+# A show & tell script
+#
+cleanall	# Clean everything
+
+ss
+aa
+
+wait 10
+rh 3		# Reboot host 3
+rh 1
+waa 3
+waa 1
+wait 10 
+
+dea 2     	# Deactivate host 2
+wait 5
+wai 2		# Wait for Inactive
+wait 5
+actc 2		# Activate host 2 as a client
+waa 2		# Wait for active
+wait 20
+
+############################
+
+
+wait 10
+rh 3		# Reboot host 3
+rh 1
+waa 3
+waa 1
+wait 10 
+
+dea 2     	# Deactivate host 2
+wait 5
+wai 2		# Wait for Inactive
+wait 5
+actc 2		# Activate host 2 as a client
+waa 2		# Wait for active
+wait 20
+
+############################
+
+
+wait 10
+rh 3		# Reboot host 3
+rh 1
+waa 3
+waa 1
+wait 10 
+
+dea 2     	# Deactivate host 2
+wait 5
+wai 2		# Wait for Inactive
+wait 5
+actc 2		# Activate host 2 as a client
+waa 2		# Wait for active
+wait 20
+
+############################
+
+
+wait 10
+rh 3		# Reboot host 3
+rh 1
+waa 3
+waa 1
+wait 10 
+
+dea 2     	# Deactivate host 2
+wait 5
+wai 2		# Wait for Inactive
+wait 5
+actc 2		# Activate host 2 as a client
+waa 2		# Wait for active
+wait 20
+
+############################
+
+
+wait 10
+rh 3		# Reboot host 3
+rh 1
+waa 3
+waa 1
+wait 10 
+
+dea 2     	# Deactivate host 2
+wait 5
+wai 2		# Wait for Inactive
+wait 5
+actc 2		# Activate host 2 as a client
+waa 2		# Wait for active
+wait 20
+
+############################
+
+
+wait 10
+rh 3		# Reboot host 3
+rh 1
+waa 3
+waa 1
+wait 10 
+
+dea 2     	# Deactivate host 2
+wait 5
+wai 2		# Wait for Inactive
+wait 5
+actc 2		# Activate host 2 as a client
+waa 2		# Wait for active
+wait 20
+
+############################
+
+
+wait 10
+rh 3		# Reboot host 3
+rh 1
+waa 3
+waa 1
+wait 10 
+
+dea 2     	# Deactivate host 2
+wait 5
+wai 2		# Wait for Inactive
+wait 5
+actc 2		# Activate host 2 as a client
+waa 2		# Wait for active
+wait 20
+
+############################
