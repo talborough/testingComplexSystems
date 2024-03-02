@@ -374,12 +374,6 @@ class Platform:
     username = <username with the sudo priv to be used accessing *all* host systems>
     password = <password to go with the above username>
     
-    # Provide the IP address or resolvable DNS name of the test hosts:
-    
-    testhostIdentifier = <resolvable host name or ip #1>
-    testhostIdentifier = <resolvable host name or ip #2>
-    testhostIdentifier = <resolvable host name or ip #3>
-    
     # These control the size and shape of the configuration being tested.
 
     serverCount = 1
@@ -388,6 +382,12 @@ class Platform:
     exportFSPerHost = 2
     fsUserPerImportFS = 3
 
+    # Provide the IP address or resolvable DNS name of the test hosts:
+    
+    testhostIdentifier = <resolvable host name or ip #1>
+    testhostIdentifier = <resolvable host name or ip #2>
+    testhostIdentifier = <resolvable host name or ip #3>
+    
     """
 
     #
