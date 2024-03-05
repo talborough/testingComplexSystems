@@ -11,7 +11,7 @@
 # =======       =========               =============================
 defineTable     gCounty                                         # Table definition
 defineColumn    gCounty_Name                                    # The county's name
-defineIndex     gCounty_Name2Ref                                # A dictionary to look up county index by name
+defineIndex     gCounty_Name2Ref                                # A dictionary to look up county reference by name
 defineColumn    gCounty_RowStatus       None                    # For concurrency control but - not used
 endTable
 #

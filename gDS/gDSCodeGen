@@ -4,6 +4,7 @@
 
 +++ - gDSCodeGen - Generate gDS code from a user-supplied data definition file.
 
+    V0103 - 03/05/2024 06:57 - Fix dump format.
     V0102 - 02/12/2024 11:11 - Support dumping to a file or the screen.
     V0101 - 01/22/2024 09:20 - Fix up for webinars. Change the name of the generated support routines.
     V0100 - 01/04/2024 06:45 - Initial version entry.
@@ -936,7 +937,10 @@ def generateTableDumpCode():
                 
             elif primaryKeyword == "endTable":
                 GeneratedCode += "\n"
+                GeneratedCode += f"            print ('')\n"
+                GeneratedCode += "\n"
                 GeneratedCode += f"    return\n"
+                GeneratedCode += "\n"
                 currentTableName = None
             
 
