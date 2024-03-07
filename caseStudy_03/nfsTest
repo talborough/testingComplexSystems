@@ -4,6 +4,7 @@
 
 +++ - nfsTest - Test a set of "NFS" instances
 
+    V0105 - 03/06/2024 21:12 - Start to add pausing; fix so reboot -f works
     V0104 - 02/12/2024 11:22 - More work on SMs and overall operation. Offline docs for this moment
     V0103 - 02/07/2024 12:01 - More work on SMs and overall operation. Improve documentation.
     V0102 - 02/04/2024 10:42 - It ran but the state machines needed major work. General cleanup as well.
@@ -1058,7 +1059,7 @@ class UI:
                 gAllStop[0] = True
                 time.sleep(100000)            
 
-            if UI.firstTime:
+            if (UI.firstTime) and (len(sys.argv) > 1):
                 # Maybe clean the test hosts the first time through this code
                 print ("")
                 answer = input(" Enter 'y' to 'clean all' test hosts: ")
@@ -1241,8 +1242,7 @@ class Configurator:
                 time.sleep(1)
             
         # We're in - talk...
-        (i, o, e) = Configurator.testHostConnections[hostConnRef].exec_command(command)
-
+        (i, o, e) = Configurator.testHostConnections[hostConnRef].exec_command(command, timeout = 5)
         retcode = o.channel.recv_exit_status()
         
         if retcode:
@@ -1542,17 +1542,24 @@ class Configurator:
                 # Reboot right away and wait for the connection to start working again
                 elif gHost_State[hostRef] == "Rebooting":
                 
-                    Configurator.testHostConnections[hostConnRef] = None
-                    #Configurator.talkToHost(hostConnRef, hostRef, \
-                    #    f"echo {gPassword[0]} | sudo -S shutdown -r now", stopOnError = False)
-                    Configurator.talkToHost(hostConnRef, hostRef, \
-                        f"echo {gPassword[0]} | sudo -S reboot", stopOnError = False)
-                        
-                    time.sleep(3)
-
                     # Unlock so screen updates. No one messes with a Rebooting host.
                     MasterLock.unlock()
                     
+                    Configurator.testHostConnections[hostConnRef] = None
+                    #Configurator.talkToHost(hostConnRef, hostRef, \
+                    #    f"echo {gPassword[0]} | sudo -S shutdown -r now", stopOnError = False)
+                    
+                    try:
+                    
+                        Configurator.talkToHost(hostConnRef, hostRef, \
+                            f"echo {gPassword[0]} | sudo -S reboot &", stopOnError = False)
+                            
+                    except Exception as e:
+                    
+                        pass
+                            
+                    time.sleep(3)
+
                     Configurator.testHostConnections[hostConnRef] = None
                     Configurator.talkToHost(hostConnRef, hostRef, f"echo {gPassword[0]} | sudo -S date")
 

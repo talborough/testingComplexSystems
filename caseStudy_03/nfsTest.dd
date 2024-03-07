@@ -34,6 +34,9 @@ defineColumn    gHost_State             "Inactive"  # Test hosts can be Inactive
 defineColumn    gHost_ExportFSUseCount  0           # Number of exported FS on this host
 defineColumn    gHost_ImportFSUseCount  0           # Number of imported FS on this host
 defineColumn    gHost_FSUserUseCount    0           # Number of FS users on this host
+defineColumn    gHost_ExportFSPausedCount 0         # Number of paused exported FS on this host
+defineColumn    gHost_ImportFSPausedCount 0         # Number of paused imported FS on this host
+defineColumn    gHost_FSUserrPausedCount 0          # Number of paused FS users on this host
 defineColumn    gHost_ForceDataCompareError False   # Used to trigger one data compare error in ioEngine
 
 defineColumn    gHost_OKWRCount         0           # Number of OK write / read I/Os on this host
@@ -54,6 +57,7 @@ defineColumn    gExportFS_gHost_Ref                 # The host the exported FS i
 defineColumn    gExportFS_Name                      # The exported file system name on the host
 defineColumn    gExportFS_State         "Inactive"  # The current state of the exported FS
 defineColumn    gExportFS_ImportFSUseCount 0        # The number of mounted FS on this exported FS
+defineColumn    gExportFS_ImportFSPausedCount 0     # The number of paused FS on this exported FS
 defineColumn    gExportFS_RowStatus     None
 endTable
 
@@ -66,6 +70,7 @@ defineColumn    gImportFS_gHost_Ref                 # The host used for the impo
 defineColumn    gImportFS_Name                      # The mounted file system name on the host
 defineColumn    gImportFS_State         "Inactive"  # The current state of the imported FS
 defineColumn    gImportFS_FSUserUseCount 0          # The number of FS users on this imported FS
+defineColumn    gImportFS_FSUserPausedCount 0       # The number of paused FS users on this imported FS
 defineColumn    gImportFS_RowStatus     None
 endTable
 
@@ -84,11 +89,14 @@ defineColumn    gFSUser_RowStatus       None
 endTable
 
 #
-# Configurator statistics
+# State statistics
 #
 defineUnary     gHostInactive           0
 defineUnary     gHostActivating         0
 defineUnary     gHostActive             0
+defineUnary     gHostPausing            0
+defineUnary     gHostPaused             0
+defineUnary     gHostResuming           0
 defineUnary     gHostDeactivating       0
 defineUnary     gHostRebooting          0
 defineUnary     gHostSMThreadCount      0
@@ -96,6 +104,9 @@ defineUnary     gHostSMThreadCount      0
 defineUnary     gExportFSInactive       0
 defineUnary     gExportFSActivating     0
 defineUnary     gExportFSActive         0
+defineUnary     gExportFSPausing        0
+defineUnary     gExportFSPaused         0
+defineUnary     gExportFSResuming       0
 defineUnary     gExportFSDeactivating   0
 defineUnary     gExportFSRebooting      0
 defineUnary     gExportFSSMThreadCount  0
@@ -103,6 +114,9 @@ defineUnary     gExportFSSMThreadCount  0
 defineUnary     gImportFSInactive       0
 defineUnary     gImportFSActivating     0
 defineUnary     gImportFSActive         0
+defineUnary     gImportFSPausing        0
+defineUnary     gImportFSPaused         0
+defineUnary     gImportFSResuming       0
 defineUnary     gImportFSDeactivating   0
 defineUnary     gImportFSRebooting      0
 defineUnary     gImportFSSMThreadCount  0
@@ -110,6 +124,9 @@ defineUnary     gImportFSSMThreadCount  0
 defineUnary     gFSUserInactive         0
 defineUnary     gFSUserActivating       0
 defineUnary     gFSUserActive           0
+defineUnary     gFSUserPausing          0
+defineUnary     gFSUserPaused           0
+defineUnary     gFSUserResuming         0
 defineUnary     gFSUserDeactivating     0
 defineUnary     gFSUserRebooting        0
 defineUnary     gFSUserSMThreadCount    0
