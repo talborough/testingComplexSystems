@@ -4,6 +4,7 @@
 
 +++ - nfsTest - Test a set of "NFS" instances
 
+    V0106 - ???????????????? - Pause support code done; start pause SM code
     V0105 - 03/06/2024 21:12 - Start to add pausing; fix so reboot -f works
     V0104 - 02/12/2024 11:22 - More work on SMs and overall operation. Offline docs for this moment
     V0103 - 02/07/2024 12:01 - More work on SMs and overall operation. Improve documentation.
@@ -949,7 +950,47 @@ class UI:
                     gHost_State[hostRef] = "Activating"
 
             MasterLock.unlock()
-
+            
+        # Pause
+        # Resume
+        elif command.startswith("pau "):
+        
+            print ("Not completed yet")
+            time.sleep(3)
+            return
+        
+            MasterLock.lock()
+            
+            args = command.split()
+            if len(args) == 2:
+                hostRef = int(args[1])
+                if (gHost_Role[hostRef] != "Client") or  (gHost_State[hostRef] == "Active"):
+                    print ("Must be an active client for now")
+                    time.sleep(2)
+                else:
+                    gHost_State[hostRef] = "Pausing"
+                    
+            MasterLock.unlock()
+            
+        
+        elif command.startswith("res "):
+        
+            MasterLock.lock()
+            
+            args = command.split()
+            if len(args) == 2:
+                hostRef = int(args[1])
+                if (gHostRole[hostRef] != "Client") or  (gHost_State[hostRef] == "Paused"):
+                    print ("Must be a paused client for now")
+                    time.sleep(2)
+                else:
+                    gHost_State[hostRef] = "Resuming"
+                    
+            MasterLock.unlock()
+            
+        
+        # s(heiu)
+        # a((heiu)
              
         # Set dump output
         elif command == "dtf":
@@ -1036,17 +1077,21 @@ class UI:
             
             MasterLock.unlock()
             
-            # Update menu
+            if gDisplayMenuHelp[0]:
+            
+                # Update menu
+                displayLines += " \n"
+                displayLines += " dhr / der / dir / dur = Dump hosts / exportFS / importFS / FSUser rows \n"
+                displayLines += " insw / cleanall       = Install sw / clean test hosts \n"
+                displayLines += " ecmd / dtf/dts        = Execute command(s) on test host(s) / dump to screen/file \n"
+                displayLines += " ss / aa / script One  = Start all SMs / activate all SMs / run script One.scr \n"
+                displayLines += " rh n / ff n           = Reboot host n / force data compare fault host n \n"
+                displayLines += " dea n / acts/c n      = Deactivate host n / activate host svr/cli n \n"
+                displayLines += " waa n / wai n / wait  = Wait for Active / Inactive host / just wait seconds \n"
+                displayLines += " help                  = Print help on the screen \n"
+                
             displayLines += " \n"
-            displayLines += " dhr / der / dir / dur = Dump hosts / exportFS / importFS / FSUser rows \n"
-            displayLines += " insw / cleanall       = Install sw / clean test hosts \n"
-            displayLines += " ecmd / dtf/dts        = Execute command(s) on test host(s) / dump to screen/file \n"
-            displayLines += " ss / aa / script One  = Start all SMs / activate all SMs / run script One.scr \n"
-            displayLines += " rh n / ff n           = Reboot host n / force data compare fault host n \n"
-            displayLines += " dea n / acts/c n      = Deactivate host n / activate host svr/cli n \n"
-            displayLines += " waa n / wai n / wait  = Wait for Active / Inactive host / just wait seconds \n"
-            displayLines += " help                  = Print help on the screen \n"
-            displayLines += " \n"
+
             displayLines += f" Command #0 .. #5 = '{UI.lastCommand[0]}' | '{UI.lastCommand[1]}' | '{UI.lastCommand[2]}' | '{UI.lastCommand[3]}' | '{UI.lastCommand[4]}' | '{UI.lastCommand[5]}' \n"
     
             # Print whole screen with one "print" (no flashing)
@@ -1085,7 +1130,7 @@ class UI:
             elif UI.firstTime:
                 time.sleep(2)
             else:# Get any user input and also pause for 2 seconds
-                print (f" Type a command from the menu above then hit Enter:")
+                print (f" Enter a blank command to toggle the help menue or, enter a command on the menu then hit Enter:")
                 i, o, e = select.select([sys.stdin], [], [], 2)
 
             # No longer the first time
@@ -1096,8 +1141,14 @@ class UI:
                 
                 command = sys.stdin.readline().strip()
                 
-                # Process user input
-                UI.processCommand(command)
+                if command == "":
+                
+                    gDisplayMenuHelp[0] = not gDisplayMenuHelp[0]
+                    
+                else:
+                
+                    # Process user input
+                    UI.processCommand(command)
             
         return
         
@@ -1279,24 +1330,36 @@ class Configurator:
         gHostInactive[0] = gHost_State.count("Inactive")
         gHostActivating[0] = gHost_State.count("Activating")
         gHostActive[0] = gHost_State.count("Active")
+        gHostPausing[0] = gHost_State.count("Pausing")
+        gHostPaused[0] = gHost_State.count("Paused")
+        gHostResuming[0] = gHost_State.count("Resuming")
         gHostDeactivating[0] = gHost_State.count("Deactivating")
         gHostRebooting[0] = gHost_State.count("Rebooting")
     
         gExportFSInactive[0] = gExportFS_State.count("Inactive")
         gExportFSActivating[0] = gExportFS_State.count("Activating")
         gExportFSActive[0] = gExportFS_State.count("Active")
+        gExportFSPausing[0] = gExportFS_State.count("Pausing")
+        gExportFSPaused[0] = gExportFS_State.count("Paused")
+        gExportFSResuming[0] = gExportFS_State.count("Resuming")
         gExportFSDeactivating[0] = gExportFS_State.count("Deactivating")
         gExportFSRebooting[0] = gExportFS_State.count("Rebooting")
     
         gImportFSInactive[0] = gImportFS_State.count("Inactive")
         gImportFSActivating[0] = gImportFS_State.count("Activating")
         gImportFSActive[0] = gImportFS_State.count("Active")
+        gImportFSPausing[0] = gImportFS_State.count("Pausing")
+        gImportFSPaused[0] = gImportFS_State.count("Paused")
+        gImportFSResuming[0] = gImportFS_State.count("Resuming")
         gImportFSDeactivating[0] = gImportFS_State.count("Deactivating")
         gImportFSRebooting[0] = gImportFS_State.count("Rebooting")
     
         gFSUserInactive[0] = gFSUser_State.count("Inactive")
         gFSUserActivating[0] = gFSUser_State.count("Activating")
         gFSUserActive[0] = gFSUser_State.count("Active")
+        gFSUserPausing[0] = gFSUser_State.count("Pausing")
+        gFSUserPaused[0] = gFSUser_State.count("Paused")
+        gFSUserResuming[0] = gFSUser_State.count("Resuming")
         gFSUserDeactivating[0] = gFSUser_State.count("Deactivating")
         gFSUserRebooting[0] = gFSUser_State.count("Rebooting")
         
@@ -1312,6 +1375,9 @@ class Configurator:
         displayLines += " Inactive           %4d         %4d         %4d         %4d \n" % (gHostInactive[0], gExportFSInactive[0], gImportFSInactive[0], gFSUserInactive[0])
         displayLines += " Activating         %4d         %4d         %4d         %4d \n" % (gHostActivating[0], gExportFSActivating[0], gImportFSActivating[0], gFSUserActivating[0])
         displayLines += " Active             %4d         %4d         %4d         %4d \n" % (gHostActive[0], gExportFSActive[0], gImportFSActive[0], gFSUserActive[0])
+        displayLines += " Pausing            %4d         %4d         %4d         %4d \n" % (gHostPausing[0], gExportFSPausing[0], gImportFSPausing[0], gFSUserPausing[0])
+        displayLines += " Paused             %4d         %4d         %4d         %4d \n" % (gHostPaused[0], gExportFSPaused[0], gImportFSPaused[0], gFSUserPaused[0])
+        displayLines += " Resuming           %4d         %4d         %4d         %4d \n" % (gHostResuming[0], gExportFSResuming[0], gImportFSResuming[0], gFSUserResuming[0])
         displayLines += " Deactivating       %4d         %4d         %4d         %4d \n" % (gHostDeactivating[0], gExportFSDeactivating[0], gImportFSDeactivating[0], gFSUserDeactivating[0])
         displayLines += " Rebooting          %4d         %4d         %4d         %4d \n" % (gHostRebooting[0], gExportFSRebooting[0], gImportFSRebooting[0], gFSUserRebooting[0])
         displayLines += " \n"
@@ -1319,19 +1385,22 @@ class Configurator:
         displayLines += " \n"
         
         displayLines += "                                                                     Norm  Abrt    OK  Prem Empty    No       \n"
-        displayLines += " Per Host     Host          Host     ExportFS   ImportFS   FSUser     I/O  Conn   Vfy   EOF  File  File   Tot \n"
-        displayLines += " Info         Role          State    Use Cnt    Use Cnt    Use Cnt    Cnt   Cnt   Cnt   Cnt   Cnt   Cnt   Cnt \n"
+        displayLines += " Per Host     Host          Host     ExportFS   ImportFS    FSUser    I/O  Conn   Vfy   EOF  File  File   Tot \n"
+        displayLines += " Info         Role          State     Use Pau    Use Pau   Use Pau    Cnt   Cnt   Cnt   Cnt   Cnt   Cnt   Cnt \n"
         displayLines += " -------      ----          -----    --------   --------   ------- ------  ----   ---------------------   --- \n"
         
         for hostRef in range(len(gHost_RowStatus)):
-            displayLines += "%8s  %8s   %12s        %4d       %4d      %4d   %4d  %4d  %4d  %4d  %4d  %4d  %4d \n" % \
+            displayLines += "%8s  %8s   %12s     %3d %3d    %3d %3d   %3d %3d   %4d  %4d  %4d  %4d  %4d  %4d  %4d \n" % \
                (gHost_Name[hostRef], \
                 gHost_Role[hostRef], \
                 gHost_State[hostRef], \
                 
                 gHost_ExportFSUseCount[hostRef], \
+                gHost_ExportFSPausedCount[hostRef], \
                 gHost_ImportFSUseCount[hostRef], \
+                gHost_ImportFSPausedCount[hostRef], \
                 gHost_FSUserUseCount[hostRef], \
+                gHost_FSUserPausedCount[hostRef], \
                 
                 gHost_OKWRCount[hostRef], \
                 gHost_BadConnCount[hostRef], \
@@ -1348,7 +1417,6 @@ class Configurator:
 
         return (displayLines)
     
-    ###???
     def createAllSMRows():
     
         # gHost rows already exist...

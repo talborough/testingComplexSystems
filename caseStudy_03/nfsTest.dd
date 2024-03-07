@@ -14,6 +14,7 @@ defineUnary     gPassword               None        # To go with the username ab
 defineUnary     gStartTime              0           # Overall start time
 defineUnary     gIOEngineNumber         0           # Unique ioEngine file names
 defineUnary     gAllStop                False       # Something happened - stop as fast as possisble
+defineUnary     gDisplayMenuHelp        True        # Display menu help
 
 defineUnary     gScriptRunning          False       # A few things depend on this
 defineUnary     gScriptFileName         ""          # Script file name
@@ -36,7 +37,7 @@ defineColumn    gHost_ImportFSUseCount  0           # Number of imported FS on t
 defineColumn    gHost_FSUserUseCount    0           # Number of FS users on this host
 defineColumn    gHost_ExportFSPausedCount 0         # Number of paused exported FS on this host
 defineColumn    gHost_ImportFSPausedCount 0         # Number of paused imported FS on this host
-defineColumn    gHost_FSUserrPausedCount 0          # Number of paused FS users on this host
+defineColumn    gHost_FSUserPausedCount 0           # Number of paused FS users on this host
 defineColumn    gHost_ForceDataCompareError False   # Used to trigger one data compare error in ioEngine
 
 defineColumn    gHost_OKWRCount         0           # Number of OK write / read I/Os on this host
