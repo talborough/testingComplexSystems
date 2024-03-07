@@ -964,7 +964,7 @@ class UI:
             args = command.split()
             if len(args) == 2:
                 hostRef = int(args[1])
-                if (gHost_Role[hostRef] != "Client") or  (gHost_State[hostRef] == "Active"):
+                if (gHost_Role[hostRef] != "Client") or (gHost_State[hostRef] != "Active"):
                     print ("Must be an active client for now")
                     time.sleep(2)
                 else:
@@ -975,12 +975,16 @@ class UI:
         
         elif command.startswith("res "):
         
+            print ("Not completed yet")
+            time.sleep(3)
+            return
+        
             MasterLock.lock()
             
             args = command.split()
             if len(args) == 2:
                 hostRef = int(args[1])
-                if (gHostRole[hostRef] != "Client") or  (gHost_State[hostRef] == "Paused"):
+                if (gHost_Role[hostRef] != "Client") or (gHost_State[hostRef] != "Paused"):
                     print ("Must be a paused client for now")
                     time.sleep(2)
                 else:
