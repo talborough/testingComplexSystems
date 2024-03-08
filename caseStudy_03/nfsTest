@@ -868,12 +868,13 @@ class UI:
             MasterLock.unlock()
 
 
-        # Start a thread to Deactivate a given host. The thread spawned below does the actual work.
+        # Start a thread to throw commands at us.
         elif command.startswith("script "):
         
             MasterLock.lock()
             
             gScriptRunning[0] = True
+            gDisplayMenuHelp[0] = False
             
             args = command.split()
             if len(args) == 2:
@@ -951,13 +952,8 @@ class UI:
 
             MasterLock.unlock()
             
-        # Pause
-        # Resume
-        elif command.startswith("pau "):
-        
-            print ("Not completed yet")
-            time.sleep(3)
-            return
+
+        elif command.startswith("pau! "):
         
             MasterLock.lock()
             
@@ -973,11 +969,7 @@ class UI:
             MasterLock.unlock()
             
         
-        elif command.startswith("res "):
-        
-            print ("Not completed yet")
-            time.sleep(3)
-            return
+        elif command.startswith("res! "):
         
             MasterLock.lock()
             
@@ -1092,7 +1084,7 @@ class UI:
                 displayLines += " rh n / ff n           = Reboot host n / force data compare fault host n \n"
                 displayLines += " dea n / acts/c n      = Deactivate host n / activate host svr/cli n \n"
                 displayLines += " waa n / wai n / wait  = Wait for Active / Inactive host / just wait seconds \n"
-                displayLines += " help                  = Print help on the screen \n"
+                displayLines += " pau/res n / help      = Pause / resume host; Print help on the screen \n"
                 
             displayLines += " \n"
 
@@ -1103,7 +1095,7 @@ class UI:
 
             if (time.time() - gStartTime[0]) > 1200:
                 print ("")
-                print ("Stopping after 20 minutes so we don't consume a lot of disk space in nfsTest.log.")
+                print ("Stopping after 20 minutes so we don't consume a lot of disk space.")
                 print ("")
                 gAllStop[0] = True
                 time.sleep(100000)            
@@ -1134,7 +1126,7 @@ class UI:
             elif UI.firstTime:
                 time.sleep(2)
             else:# Get any user input and also pause for 2 seconds
-                print (f" Enter a blank command to toggle the help menue or, enter a command on the menu then hit Enter:")
+                print (f" Hit Enter to toggle the help menu or, enter one command from the menu then hit Enter:")
                 i, o, e = select.select([sys.stdin], [], [], 2)
 
             # No longer the first time
@@ -1597,7 +1589,7 @@ class Configurator:
         
             MasterLock.lock()
         
-            # If activating a server
+            # If working with a server host
             if gHost_Role[hostRef] == "Server":
 
                 if gHost_State[hostRef] == "Activating":
@@ -1618,8 +1610,6 @@ class Configurator:
                     MasterLock.unlock()
                     
                     Configurator.testHostConnections[hostConnRef] = None
-                    #Configurator.talkToHost(hostConnRef, hostRef, \
-                    #    f"echo {gPassword[0]} | sudo -S shutdown -r now", stopOnError = False)
                     
                     try:
                     
@@ -1652,10 +1642,22 @@ class Configurator:
                 
                     pass
 
-            # If activating a client
+            # If working with a client host
             elif gHost_Role[hostRef] == "Client":
             
-                if gHost_State[hostRef] == "Activating":
+                # Go Paused once import PausedCount == UseCount
+                if (gHost_State[hostRef] == "Pausing") and \
+                    (gHost_ImportFSPausedCount[hostRef] == gHost_ImportFSUseCount[hostRef]):
+                    
+                    gHost_State[hostRef] = "Paused"
+                
+                # Go Active once Resuming and ImportFSPausedCount == 0
+                elif (gHost_State[hostRef] == "Resuming") and \
+                    (gHost_ImportFSPausedCount[hostRef] == 0):
+                    
+                    gHost_State[hostRef] = "Active"
+                
+                elif gHost_State[hostRef] == "Activating":
             
                     logging.info(f"Activate name = {gHost_Name[hostRef]}; role = {gHost_Role[hostRef]}; state = {gHost_State[hostRef]}")
 
@@ -1670,11 +1672,16 @@ class Configurator:
                 elif gHost_State[hostRef] == "Rebooting":
                 
                     Configurator.testHostConnections[hostConnRef] = None
-                    #Configurator.talkToHost(hostConnRef, hostRef, \
-                    #    f"echo {gPassword[0]} | sudo -S shutdown -r now", stopOnError = False)
-                    Configurator.talkToHost(hostConnRef, hostRef, \
-                        f"echo {gPassword[0]} | sudo -S reboot", stopOnError = False)
                         
+                    try:
+                    
+                        Configurator.talkToHost(hostConnRef, hostRef, \
+                            f"echo {gPassword[0]} | sudo -S reboot &", stopOnError = False)
+                            
+                    except Exception as e:
+                    
+                        pass
+                            
                     time.sleep(3)
 
                     # Unlock so screen updates. No one messes with a Rebooting host.
@@ -1855,9 +1862,26 @@ class Configurator:
             # If this import FS belongs to a host that's a client type at this time
             if gHost_Role[clientHostRef] == "Client":
 
+                # "Host-led pausing" (Someone "Pausing" either the
+                # client or server host...) and import is active and all useres are paused
+                if ((gHost_State[clientHostRef] == "Pausing") or \
+                    (gHost_State[serverHostRef] == "Pausing")) and \
+                   (gImportFS_State[importFSRef] == "Active") and \
+                   (gImportFS_FSUserPausedCount[importFSRef] == gImportFS_FSUserUseCount[importFSRef]):
+                   
+                    # Unmount an imported FS
+                    logging.info(f"Directed pause Import FS #{importFSRef}; name = {gImportFS_Name[importFSRef]}; state = {gImportFS_State[importFSRef]}")
+                    
+                    ###pauseImportFS()
+                    
+                    # Track activity of host, export and import FS
+                    gExportFS_ImportFSPausedCount[exportFSRef] += 1
+                    gHost_ImportFSPausedCount[clientHostRef] += 1
+                    gImportFS_State[importFSRef] = "Paused"
+
                 # "Host-led deactivation" (deactivate started by someone "Deactivating" either the
-                # client or server host...) and import is active and not used destroy the import
-                if ((gHost_State[clientHostRef] == "Deactivating") or \
+                # client or server host...) and import is active and not used: destroy the import
+                elif ((gHost_State[clientHostRef] == "Deactivating") or \
                     (gHost_State[serverHostRef] == "Deactivating")) and \
                    (gImportFS_State[importFSRef] == "Active") and \
                    (gImportFS_FSUserUseCount[importFSRef] == 0):
@@ -1980,7 +2004,7 @@ class Configurator:
             
             MasterLock.lock()
             
-            # Handle the possible returns frfom the main write/read ioEngine run            
+            # Handle the possible returns from the main write/read ioEngine run            
             # A perfectly normal ioEngine write / read pass return code
             if r == 0:
                 verifyDataFile = False
@@ -2064,9 +2088,39 @@ class Configurator:
             # If this FS user belongs to a host that's a client type at this time
             if gHost_Role[clientHostRef] == "Client":
 
+                # Host-led pausing of a client or server host!!
+                # If pausing the client host or server host and the FS user is active, pause the FS user
+                if ((gHost_State[clientHostRef] == "Pausing") or \
+                    (gHost_State[serverHostRef] == "Pausing")) and \
+                   (gFSUser_State[fsUserRef] == "Active"):
+                   
+                    # Start no more file system user threads
+                    logging.info(f"Pause FS user #{fsUserRef}; name = {gFSUser_Name[fsUserRef]}; state = {gFSUser_State[fsUserRef]}")
+                    
+                    # Track activity
+                    gHost_FSUserPausedCount[clientHostRef] += 1
+                    gImportFS_FSUserPausedCount[importFSRef] += 1
+                    gFSUser_State[fsUserRef] = "Paused"
+                    
+                # If Paused do nothing
+                elif gFSUser_State[fsUserRef] == "Paused":
+                
+                    pass
+
+                # If Resuming track activity and go to Active
+                elif gFSUser_State[fsUserRef] == "Resuming":
+                
+                    # Start no more file system user threads
+                    logging.info(f"Resume FS user #{fsUserRef}; name = {gFSUser_Name[fsUserRef]}; state = {gFSUser_State[fsUserRef]}")
+                    
+                    # Track activity
+                    gHost_FSUserPausedCount[clientHostRef] -= 1
+                    gImportFS_FSUserPAusedCount[importFSRef] -= 1
+                    gFSUser_State[fsUserRef] = "Active"
+                    
                 # Host-led deactivation of a client or server host!!
                 # If deactivating the client host or server host and the FS user is active, stop the FS user
-                if ((gHost_State[clientHostRef] == "Deactivating") or \
+                elif ((gHost_State[clientHostRef] == "Deactivating") or \
                     (gHost_State[serverHostRef] == "Deactivating")) and \
                    (gFSUser_State[fsUserRef] == "Active"):
                    
