@@ -1093,9 +1093,9 @@ class UI:
             # Print whole screen with one "print" (no flashing)
             print (displayLines)
 
-            if (time.time() - gStartTime[0]) > 1200:
+            if (time.time() - gStartTime[0]) > 1800:
                 print ("")
-                print ("Stopping after 20 minutes so we don't consume a lot of disk space.")
+                print ("Stopping after 30 minutes so we don't consume a lot of disk space.")
                 print ("")
                 gAllStop[0] = True
                 time.sleep(100000)            

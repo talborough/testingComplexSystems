@@ -29,6 +29,4 @@ diff $1 ~/testingComplexSystems/caseStudy_01/CS01_Notes.txt       ~/dev_remote/C
 echo ======================================================
 diff $1 ~/testingComplexSystems/caseStudy_02/CS02_Notes.txt       ~/dev_remote/CS02_Notes.txt
 echo ======================================================
-diff $1 ~/testingComplexSystems/caseStudy_03/CS03_Notes.txt       ~/dev_remote/CS03_Notes.txt
-echo ======================================================
 set +x
