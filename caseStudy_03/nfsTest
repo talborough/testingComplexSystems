@@ -2115,7 +2115,7 @@ class Configurator:
                     
                     # Track activity
                     gHost_FSUserPausedCount[clientHostRef] -= 1
-                    gImportFS_FSUserPAusedCount[importFSRef] -= 1
+                    gImportFS_FSUserPausedCount[importFSRef] -= 1
                     gFSUser_State[fsUserRef] = "Active"
                     
                 # Host-led deactivation of a client or server host!!

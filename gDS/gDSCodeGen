@@ -937,7 +937,7 @@ def generateTableDumpCode():
                 
             elif primaryKeyword == "endTable":
                 GeneratedCode += "\n"
-                GeneratedCode += f"            print ('')\n"
+                GeneratedCode += f"            print ('', file = outFile)\n"
                 GeneratedCode += "\n"
                 GeneratedCode += f"    return\n"
                 GeneratedCode += "\n"
