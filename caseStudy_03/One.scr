@@ -3,130 +3,20 @@
 #
 cleanall	# Clean everything
 
-ss
-aa
+ss          # Start threads
+aa          # Set states active
 
-wait 10
-rh 3		# Reboot host 3
-rh 1
-waa 3
-waa 1
-wait 10 
+waa 0       # Wait for host to go active
+waa 1       # Wait for host to go active
+waa 2       # Wait for host to go active
+waa 3       # Wait for host to go active
 
-dea 2     	# Deactivate host 2
+wait 3
+
+dea  2      # Deactivate 2
+wai 2       # Wait for it to go inactive
+
 wait 5
-wai 2		# Wait for Inactive
-wait 5
-actc 2		# Activate host 2 as a client
-waa 2		# Wait for active
-wait 20
 
-############################
-
-
-wait 10
-rh 3		# Reboot host 3
-rh 1
-waa 3
-waa 1
-wait 10 
-
-dea 2     	# Deactivate host 2
-wait 5
-wai 2		# Wait for Inactive
-wait 5
-actc 2		# Activate host 2 as a client
-waa 2		# Wait for active
-wait 20
-
-############################
-
-
-wait 10
-rh 3		# Reboot host 3
-rh 1
-waa 3
-waa 1
-wait 10 
-
-dea 2     	# Deactivate host 2
-wait 5
-wai 2		# Wait for Inactive
-wait 5
-actc 2		# Activate host 2 as a client
-waa 2		# Wait for active
-wait 20
-
-############################
-
-
-wait 10
-rh 3		# Reboot host 3
-rh 1
-waa 3
-waa 1
-wait 10 
-
-dea 2     	# Deactivate host 2
-wait 5
-wai 2		# Wait for Inactive
-wait 5
-actc 2		# Activate host 2 as a client
-waa 2		# Wait for active
-wait 20
-
-############################
-
-
-wait 10
-rh 3		# Reboot host 3
-rh 1
-waa 3
-waa 1
-wait 10 
-
-dea 2     	# Deactivate host 2
-wait 5
-wai 2		# Wait for Inactive
-wait 5
-actc 2		# Activate host 2 as a client
-waa 2		# Wait for active
-wait 20
-
-############################
-
-
-wait 10
-rh 3		# Reboot host 3
-rh 1
-waa 3
-waa 1
-wait 10 
-
-dea 2     	# Deactivate host 2
-wait 5
-wai 2		# Wait for Inactive
-wait 5
-actc 2		# Activate host 2 as a client
-waa 2		# Wait for active
-wait 20
-
-############################
-
-
-wait 10
-rh 3		# Reboot host 3
-rh 1
-waa 3
-waa 1
-wait 10 
-
-dea 2     	# Deactivate host 2
-wait 5
-wai 2		# Wait for Inactive
-wait 5
-actc 2		# Activate host 2 as a client
-waa 2		# Wait for active
-wait 20
-
-############################
+actc 2      # Activate 2 as a client
+waa 2       # Wait for host to go active

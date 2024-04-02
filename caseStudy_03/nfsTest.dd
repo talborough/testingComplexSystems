@@ -14,7 +14,7 @@ defineUnary     gPassword               None        # To go with the username ab
 defineUnary     gStartTime              0           # Overall start time
 defineUnary     gIOEngineNumber         0           # Unique ioEngine file names
 defineUnary     gAllStop                False       # Something happened - stop as fast as possisble
-defineUnary     gDisplayMenuHelp        True        # Display menu help
+defineUnary     gDisplayMenuHelp        False       # Display menu help
 
 defineUnary     gScriptRunning          False       # A few things depend on this
 defineUnary     gScriptFileName         ""          # Script file name
@@ -84,7 +84,6 @@ defineColumn    gFSUser_gImportFS_Ref               # The imported FS being used
 defineColumn    gFSUser_gHost_Ref                   # The host ioEngine runs on
 defineColumn    gFSUser_Name                        # The name of the currently active ioEngine data file
 defineColumn    gFSUser_State           "Inactive"  # The current state of the FS use
-defineColumn    gFSUser_IOEFileNumber   0           # Increment this per file written with IOEngine
 defineColumn    gFSUser_ForceFailure    False       # Force one data compare error on next I/O
 defineColumn    gFSUser_RowStatus       None
 endTable

@@ -4,7 +4,7 @@
 
 +++ - nfsTest - Test a set of "NFS" instances
 
-    V0106 - ???????????????? - Pause support code done; start pause SM code
+    V0106 - 03/30/2024 06:38 - Add pause code
     V0105 - 03/06/2024 21:12 - Start to add pausing; fix so reboot -f works
     V0104 - 02/12/2024 11:22 - More work on SMs and overall operation. Offline docs for this moment
     V0103 - 02/07/2024 12:01 - More work on SMs and overall operation. Improve documentation.
@@ -27,7 +27,7 @@
 # address, login credentials, etc.) It's generated automatically when the code first runs 
 # and it them must be filled out by the user.
 #
-# This code consumes the gDS definition file nfsTest.py (you must first use gDSCodeGen on nfsTest.dd):
+# The code below consumes the gDS definition file nfsTest.py (you must first use gDSCodeGen on nfsTest.dd):
 #
 #       ../gDS/gDSCodeGen nfsTest             >>>>>> gDSCodeGen uses nfsTest.dd to produce nfsTest.py
 #
@@ -953,7 +953,7 @@ class UI:
             MasterLock.unlock()
             
 
-        elif command.startswith("pau! "):
+        elif command.startswith("pau "):
         
             MasterLock.lock()
             
@@ -969,7 +969,7 @@ class UI:
             MasterLock.unlock()
             
         
-        elif command.startswith("res! "):
+        elif command.startswith("res "):
         
             MasterLock.lock()
             
@@ -1381,7 +1381,7 @@ class Configurator:
         displayLines += " \n"
         
         displayLines += "                                                                     Norm  Abrt    OK  Prem Empty    No       \n"
-        displayLines += " Per Host     Host          Host     ExportFS   ImportFS    FSUser    I/O  Conn   Vfy   EOF  File  File   Tot \n"
+        displayLines += " Per Host     Host           Host    ExportFS   ImportFS    FSUser    I/O  Conn   Vfy   EOF  File  File   Tot \n"
         displayLines += " Info         Role          State     Use Pau    Use Pau   Use Pau    Cnt   Cnt   Cnt   Cnt   Cnt   Cnt   Cnt \n"
         displayLines += " -------      ----          -----    --------   --------   ------- ------  ----   ---------------------   --- \n"
         
@@ -1651,9 +1651,10 @@ class Configurator:
                     
                     gHost_State[hostRef] = "Paused"
                 
-                # Go Active once Resuming and ImportFSPausedCount == 0
+                # Go Active once Resuming and _ImportFSPausedCount and _FSUserPaused == 0
                 elif (gHost_State[hostRef] == "Resuming") and \
-                    (gHost_ImportFSPausedCount[hostRef] == 0):
+                     (gHost_ImportFSPausedCount[hostRef] == 0) and \
+                     (gHost_FSUserPausedCount[hostRef] == 0):
                     
                     gHost_State[hostRef] = "Active"
                 
@@ -1854,6 +1855,31 @@ class Configurator:
                 
             return
     
+        def pauseImportFS():
+        
+            # Un-mount the !imported! FS
+            Configurator.testHostConnections[hostConnRef] = None
+            Configurator.talkToHost(hostConnRef, clientHostRef, \
+                f"echo {gPassword[0]} | sudo -S umount /nfsTest/{gImportFS_Name[importFSRef]}")
+
+            Configurator.talkToHost(hostConnRef, clientHostRef, \
+                f"echo {gPassword[0]} | sudo -S ./removeALine /etc/fstab '{gHost_IP[gExportFS_gHost_Ref[exportFSRef]]}:/var/nfsTest/{gExportFS_Name[exportFSRef]}  /nfsTest/{gImportFS_Name[importFSRef]}'")
+
+            return
+    
+        def resumeImportFS():
+        
+            Configurator.testHostConnections[hostConnRef] = None
+                
+            # Mount the !exported FS! as the !imported FS!
+            Configurator.talkToHost(hostConnRef, clientHostRef, \
+                f"echo {gPassword[0]} | sudo -S mount -o actimeo=5 {gHost_IP[gExportFS_gHost_Ref[exportFSRef]]}:/var/nfsTest/{gExportFS_Name[exportFSRef]} /nfsTest/{gImportFS_Name[importFSRef]}")
+
+            Configurator.talkToHost(hostConnRef, clientHostRef, \
+                f"echo {gPassword[0]} | sudo -S ./appendALine /etc/fstab '{gHost_IP[gExportFS_gHost_Ref[exportFSRef]]}:/var/nfsTest/{gExportFS_Name[exportFSRef]}  /nfsTest/{gImportFS_Name[importFSRef]}  nfs auto,nofail,noatime,nolock,intr,tcp,actimeo=5 0 0'")
+
+            return
+                
         # ImportFS actions
         while not gAllStop[0]:
         
@@ -1862,22 +1888,34 @@ class Configurator:
             # If this import FS belongs to a host that's a client type at this time
             if gHost_Role[clientHostRef] == "Client":
 
-                # "Host-led pausing" (Someone "Pausing" either the
-                # client or server host...) and import is active and all useres are paused
-                if ((gHost_State[clientHostRef] == "Pausing") or \
-                    (gHost_State[serverHostRef] == "Pausing")) and \
+                # "Host-led pausing" (Someone "Pausing" the client host...); we wait for all FSUsers to pause
+                if (gHost_State[clientHostRef] == "Pausing") and \
                    (gImportFS_State[importFSRef] == "Active") and \
                    (gImportFS_FSUserPausedCount[importFSRef] == gImportFS_FSUserUseCount[importFSRef]):
                    
                     # Unmount an imported FS
-                    logging.info(f"Directed pause Import FS #{importFSRef}; name = {gImportFS_Name[importFSRef]}; state = {gImportFS_State[importFSRef]}")
+                    logging.info(f"Host-led pause Import FS #{importFSRef}; name = {gImportFS_Name[importFSRef]}; state = {gImportFS_State[importFSRef]}")
                     
-                    ###pauseImportFS()
+                    pauseImportFS()
                     
-                    # Track activity of host, export and import FS
+                    # Track activity on host, export and import FS
                     gExportFS_ImportFSPausedCount[exportFSRef] += 1
                     gHost_ImportFSPausedCount[clientHostRef] += 1
                     gImportFS_State[importFSRef] = "Paused"
+
+                # "Host-led resuming" (Someone "Resuming" the client host...); we wait for all to unpause
+                elif (gHost_State[clientHostRef] == "Resuming") and \
+                   (gImportFS_State[importFSRef] == "Paused"):
+                   
+                    # Unmount an imported FS
+                    logging.info(f"Host-led resume Import FS #{importFSRef}; name = {gImportFS_Name[importFSRef]}; state = {gImportFS_State[importFSRef]}")
+                    
+                    resumeImportFS()
+                    
+                    # Track activity on host, export and import FS
+                    gExportFS_ImportFSPausedCount[exportFSRef] -= 1
+                    gHost_ImportFSPausedCount[clientHostRef] -= 1
+                    gImportFS_State[importFSRef] = "Active"
 
                 # "Host-led deactivation" (deactivate started by someone "Deactivating" either the
                 # client or server host...) and import is active and not used: destroy the import
@@ -1887,7 +1925,7 @@ class Configurator:
                    (gImportFS_FSUserUseCount[importFSRef] == 0):
                    
                     # Unmount an imported FS
-                    logging.info(f"Directed deactivate Import FS #{importFSRef}; name = {gImportFS_Name[importFSRef]}; state = {gImportFS_State[importFSRef]}")
+                    logging.info(f"Host-led deactivate Import FS #{importFSRef}; name = {gImportFS_Name[importFSRef]}; state = {gImportFS_State[importFSRef]}")
                     
                     destroyImportFS()
                     
@@ -2088,10 +2126,9 @@ class Configurator:
             # If this FS user belongs to a host that's a client type at this time
             if gHost_Role[clientHostRef] == "Client":
 
-                # Host-led pausing of a client or server host!!
-                # If pausing the client host or server host and the FS user is active, pause the FS user
-                if ((gHost_State[clientHostRef] == "Pausing") or \
-                    (gHost_State[serverHostRef] == "Pausing")) and \
+                # Host-led pausing of a client host!!
+                # If pausing the client host and the FS user is active, pause the FS user
+                if (gHost_State[clientHostRef] == "Pausing") and \
                    (gFSUser_State[fsUserRef] == "Active"):
                    
                     # Start no more file system user threads
@@ -2102,15 +2139,12 @@ class Configurator:
                     gImportFS_FSUserPausedCount[importFSRef] += 1
                     gFSUser_State[fsUserRef] = "Paused"
                     
-                # If Paused do nothing
-                elif gFSUser_State[fsUserRef] == "Paused":
-                
-                    pass
-
                 # If Resuming track activity and go to Active
-                elif gFSUser_State[fsUserRef] == "Resuming":
+                elif (gHost_State[clientHostRef] == "Resuming") and \
+                     (gFSUser_State[fsUserRef] == "Paused") and \
+                     (gHost_ImportFSPausedCount[clientHostRef] == 0):
                 
-                    # Start no more file system user threads
+                    # Start enable file system user threads
                     logging.info(f"Resume FS user #{fsUserRef}; name = {gFSUser_Name[fsUserRef]}; state = {gFSUser_State[fsUserRef]}")
                     
                     # Track activity
@@ -2118,6 +2152,11 @@ class Configurator:
                     gImportFS_FSUserPausedCount[importFSRef] -= 1
                     gFSUser_State[fsUserRef] = "Active"
                     
+                # If Paused do nothing
+                elif gFSUser_State[fsUserRef] == "Paused":
+                
+                    pass
+
                 # Host-led deactivation of a client or server host!!
                 # If deactivating the client host or server host and the FS user is active, stop the FS user
                 elif ((gHost_State[clientHostRef] == "Deactivating") or \
