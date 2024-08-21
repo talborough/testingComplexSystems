@@ -4,6 +4,7 @@
 
 +++ - nfsTest - Test a set of "NFS" instances
 
+    V0107 - 08/21/2024 08:38 - Fixup for new Ubuntu release (24.04)
     V0106 - 03/30/2024 06:38 - Add pause code
     V0105 - 03/06/2024 21:12 - Start to add pausing; fix so reboot -f works
     V0104 - 02/12/2024 11:22 - More work on SMs and overall operation. Offline docs for this moment
@@ -40,7 +41,7 @@ import threading
 from threading import Thread
 from multiprocessing import Lock
 
-import paramiko
+import paramiko         # To install: sudo apt install python3-paramiko
 import logging
 
 import time
@@ -641,8 +642,12 @@ class UI:
             #
             for hostRef in range(len(gHost_RowStatus)):
                 (i, o, e) = HostComm.executeOnOneHostWithWait(hostRef, \
-                        f"echo {gPassword[0]} | sudo -S lsof -N | grep 'nfsTest\|ioEngine'")
+                        f"echo {gPassword[0]} | sudo -S lsof -N | grep nfsTest")
                 lsofLines = o.read().decode().splitlines()
+                (i, o, e) = HostComm.executeOnOneHostWithWait(hostRef, \
+                        f"echo {gPassword[0]} | sudo -S lsof -N | grep ioEngine")
+                lsofLines += o.read().decode().splitlines()
+                print (f" lsof lines on {gHost_Name[hostRef]} = {lsofLines}")
                 for lsofLine in lsofLines:
                     process = lsofLine.split()[0]
                     pid = lsofLine.split()[1]
@@ -651,6 +656,8 @@ class UI:
                     HostComm.executeOnOneHostWithWait(hostRef, \
                         f"echo {gPassword[0]} | sudo -S kill -9 {pid}")
                         
+            print ("")
+
             time.sleep(2)
 
             #
