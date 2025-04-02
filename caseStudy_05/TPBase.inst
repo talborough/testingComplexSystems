@@ -1,0 +1,109 @@
+TPBase.inst
+
+You must use the "gpt-4o" reasoning model to parse these instructions.!
+
+Core instructions
+=================
+
+Use Python.
+
+Ignore SQL.
+
+Ignore transactions.
+
+Ignore persistence.
+
+Use relational tables and third-normal form.
+
+Define a single "multiprocessing.Lock" instance.
+
+Use the one "multiprocessing.Lock" instance only where directed.
+
+Put the table schema definition code below into the file "shared_code.py".
+
+Have all modules use "from shared_code import *".
+
+Table rows are made up of column entries with the same index.
+
+Underscores are separators.
+
+Use "multiprocessing.Manager" ".list()" instances to define each table column.
+
+Use "multiprocessing.Manager" ".dict()" instances to define indices into tables ("gHost_IPAddress2Ref = manager.dict()").
+
+Ensure each indexed column is unique otherwise raise an exception.
+
+Use "multiprocessing.Manager" ".value()" instances to define single values ("gSomeValue = manager.value()").
+
+The first argument to the "Define column" command is the column name.
+
+The second argument to the "Define column" command is the optional default value for the column. If given, cite this value as a default value to the argument to the helper function to add a row.
+
+The "Define value" command instantiates a single "multiprocessing.Manager" ".value()" instance with a value of the mandatory second argument.
+
+
+Schems definition
+=================
+
+#
+# One row per test host
+#
+Define table gHost
+Define column gHost_IPAddress
+Define index gHost_IPAddress2Ref
+Define column gHost_Username
+Define column gHost_Password
+Define column gHost_Hostname None
+Define column gHost_HostString None
+
+#
+# One row per test host connection (Paramiko is not thread safe).
+# Connection onject can not be kept in global shared object so it's kept
+# in local list storage in parallel with this table.
+#
+Define table gHostConnection
+Define column gHostConnection_gHost_Ref
+define column gHostConnection_Valid False		# This indicates weather the connection object needs re-initializing
+
+Define value gSomeValue 123
+
+Define list gSomeList
+Define dict gSomeDict
+
+
+More core instructions
+======================
+
+Use "multiprocessing.Lock" to add rows to tables.
+
+Identify the type of intermediate references used in a code sequence: "host_ref = gHost_IPAddress2Ref(ipAddress)".
+
+Identify the type of the iterator used in a "for" loop: "for host_ref in range(len(gHost_IPAddress)):".
+
+Cascading references are like this piece of code: "gHost_IPAddress[gHostConnection_gHost_Ref[host_connection_ref]]"
+
+Use cascading references if no intermediate variables are needed.
+
+
+Application instructions
+========================
+
+Do not use object-oriented programming.
+
+Create a file called "TPBase.conf" that defines data to go into 2 rows of table gHost using key-value pairs. Supply IPAddress, Username and Password.
+
+Create a module to parse file TPBase.conf and place the host attributes into the gHost table. Handle in-line comments. Strip the values before saving. Save all colum
+
+Paramiko "SSHClient" objects are not thread-safe. Also, they can not be saved in shared-memory variables. And if they are created then "shared", they are invalid until re-"connect"ed/initialized.
+
+So, let's create a module that keeps all the SSHClient objects in a class "list" variable called "client_connection". A shared "valid" flag indicates the connection needs to be recreated/reconnected.
+
+The "host_connection_manager.py" module manages host connections. It has 2 entry points:
+
+	Entry point 'create_host_connection" is called to create a connection to a host. host_ref is passed in. A new instance of a class "list" variable called "client_connection" has a value of None given to it. A new gHostConnection row is created citing the host_ref. gHostConnection_Valid is set to False. host_connection_ref is returned.
+	
+	Entry point "execute_on_host_connection" executes ad-hoc commands on a specified host_connection_ref using the stored paramiko "client" class variable from above. If gHostConnection_Valid is False, connect to the host in a while loop until the connection succeeds.  After, save the connect object in "client_connection" and set gHostConnection_Valid True. Then, exeecute the command and return stdin, stdout and stderr. Process an optional input argument of "debug" (default value of True) and another of "stop_on_error". On debug print host_ref, host_connection_ref and command, stdout and stderr. "stop_on_error" raises an exception on error.
+	
+Now create a "main.py" executable. Parse the TPBase.conf file. Then Use "execute_on_host_connection" to execute "hostname" commands on each host to get the host name and save it in gHost_Hostname. Place the last 4 characters of each hostname in gHost_HostString.
+
+Create another excutable to run a test. First parse TPBase.conf. Then create 3 connections to each host. Then, start a process for each connection and execute a single "ls -al" command on its host.
