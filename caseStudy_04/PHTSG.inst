@@ -1,7 +1,5 @@
 TPBase.inst
 
-You must use the "gpt-4o" reasoning model to parse these instructions.!
-
 Core instructions
 =================
 
@@ -116,5 +114,3 @@ For each governor person unsorted:
     Print their term
     Print the state they live in
     If they do not live in the state they govern print "*****"
-    
-Output python code with one file name and one set of code markers.
