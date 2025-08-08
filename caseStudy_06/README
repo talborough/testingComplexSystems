@@ -6,9 +6,9 @@ Significant notes:
 
     -- If you need to test a complex system right now don't wait for AI - think about getting started and checking back in a month or so.
 
-    -- Case Studies 4 & 5 prove current AI technology can work with gDS but, it's quirky right now. It needs further engineering that seems entirely doable. 
+    -- Case Studies 4 & 5 prove current AI technology can work with gDS but, it's quirky right now. Trying to provide "hints" about gDS through the lens of the Windsurf IDE is definitely not the way to go. It needs further engineering that seems entirely doable.
 
-    -- There are a number of IDEs using AI. It's interesting none are using ChatGPT's GPTs (see below for a summary). It not clear to me using an IDE here has a payout; we'll see.
+    -- There are a number of IDEs that use different AI instances. It's interesting none of them use ChatGPT's GPTs (see below for a summary of GPT features). Its not clear to me using an IDE to work with gDS has a payout; we'll see.
 
 
 ====================
@@ -20,5 +20,3 @@ ChatGPT’s **GPTs** are custom AI assistants built on top of OpenAI’s GPT-4 T
 To build a GPT, creators use a simple point-and-click interface where they provide example interactions, upload relevant files (like documents or spreadsheets), configure what the assistant should remember between sessions, and hook in any external services it needs access to—ranging from web search to proprietary databases or third-party APIs. You can specify guardrails to keep the assistant on-topic, define custom response styles, and even grant it the ability to execute actions (for example, summarizing a report, scheduling a meeting, or generating code snippets). Once configured, each GPT can be tested interactively and then published for private use, team collaboration, or public distribution in the GPT Store.
 
 In practice, GPTs empower individuals and organizations to streamline workflows and scale expertise: teachers can spin up tutoring bots that adapt to each student’s pace; sales teams can deploy pitch-perfect assistants that reference the latest product specs; and developers can generate code-review helpers tuned to a project’s style guide. Because these assistants package both knowledge and process in a single, easy-to-use chat interface, they dramatically reduce onboarding time and help non-technical users leverage AI in ways that align tightly with their specific goals. As the ecosystem grows, we’re likely to see an ever-wider array of niche GPTs—everything from travel-planning concierges to specialized research analysts—making sophisticated AI capabilities accessible to everyone.
-
-===================-
