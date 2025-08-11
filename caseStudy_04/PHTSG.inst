@@ -40,14 +40,14 @@ The second argument to the "Define column" command is the optional default value
 The "Define value" command instantiates a single "multiprocessing.Manager" ".value()" instance with a value of the mandatory second argument.
 
 
-Schems definition
+Schema definition
 =================
 
 Define table gPerson
 Define column gPerson_Name
 Define index gPerson_Name2Ref
 Define column gPerson_DOB
-Defile column gPerson_gHouse_Ref
+Define column gPerson_gHouse_Ref
 Define column gPerson_Sex "Neither"
 
 Define table gHouse
