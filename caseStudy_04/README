@@ -1,0 +1,12 @@
+To process the PHTSG.inst file:
+
+Create an (empty) directory in your work area.
+Copy the PHTSG.inst file from the case study repository into the above directory.
+Start Windsurf from the above directory and select the GPT-5 AI instance.
+Open the above PHTSG.inst file *in Windsurf*.
+Copy the contents of the file and paste it into the "Ask anything" input box on the right hand side of the Windsurf window.
+Hit Enter.
+You can watch Windsurf thinking and files getting created in the directory (3 - 4 minutes).
+Hit Accept.
+Examine and run the produced code.
+Pose a followup question (e.g. "print the population of each state") in Windsurf's "Ask anything" input box - hit Enter *twice* - notice the additional output.
