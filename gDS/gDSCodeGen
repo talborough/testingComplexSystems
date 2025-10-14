@@ -3,6 +3,7 @@
 Status = """
 +++ - gDSCodeGen - Generate gDS code from a user-supplied data definition file.
 
+    V0105 - 10/14/2025 15:45 - Raise KeyError on entry of dup key in index,
     V0104 - 03/31/2025 14:50 - Remove silly code.
     V0103 - 03/05/2024 06:57 - Fix dump format.
     V0102 - 02/12/2024 11:11 - Support dumping to a file or the screen.
@@ -538,13 +539,12 @@ def generateRowAddCode():
                 
                     fqColumnName = fqDictName[:-4]
 
-                    # See if just-inserted column value is in dictionary
+                    # See if to-be-inserted column value is already in dictionary
                     GeneratedCode += f"    thisRef = len({currentTableName}_RowStatus) - 1\n"
                     GeneratedCode += f"    if {fqColumnName}[thisRef] in {fqDictName}:\n"
                     GeneratedCode += f"        print ('')\n"
-                    GeneratedCode += f"        print ('Duplicate key in {fqDictName}; value = ', {fqColumnName}[thisRef])\n"
+                    GeneratedCode += f"        raise KeyError ('Duplicate key in {fqDictName}; value = ', {fqColumnName}[thisRef])\n"
                     GeneratedCode += f"        print ('')\n"
-                    GeneratedCode += f"        x = 1/0 # Dup key add attempt (above) to index {fqDictName}\n"
                     GeneratedCode += f"\n"
                     GeneratedCode += f"    {fqDictName}[{fqColumnName}[thisRef]] = thisRef\n"
                     GeneratedCode += f"\n"
