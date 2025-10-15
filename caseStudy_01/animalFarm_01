@@ -4,6 +4,7 @@
 
 +++ - animalFarm_01 - Explore gDS functionality and operation
 
+    V0102 - 10/15/2025 11:00 - Fix join of activities.
     V0101 - 01/22/2024 09:20 - Fix up for webinars. Change the name of the generated support routines.
     V0100 - 01/04/2024 07:48 - Initial version entry.
     
@@ -136,8 +137,8 @@ if __name__ == "__main__":
     print ("")
         
     # Wait for all the activities to run (randomly) and complete
-    for aProcess in activities:
-        aProcess.join()
+    for activity in activities:
+        activity.join()
         
 
     print ("")
