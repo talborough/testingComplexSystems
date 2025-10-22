@@ -153,6 +153,23 @@ runOneTest("A02")
 
 ########################################
 
+""" - A03 data
+#
+#
+defineTable xxx
+defineColumn xxx__yyy
+
+"""
+
+""" - A03 expected output
+Concatenated underscores at line 4 of the input file
+"""
+
+runOneTest("A03")
+
+
+########################################
+
 """ - B01 data
 #
 #
@@ -296,32 +313,6 @@ Inner keywords do not start with current table name at line 4 of the input file
 """
 
 runOneTest("J01")
-
-
-########################################
-
-""" - D01 data
-#
-#
-defineTable xxx
-defineColumn xxx_Col1
-defineColumn xxx_yyy__Ref
-defineColumn xxx_Name
-defineColumn xxx_RowStatus
-endTable
-
-defineTable yyy
-defineColumn yyy_Name
-defineColumn yyy_RowStatus
-endTable
-#
-"""
-
-""" - D01 expected output
-Reference column mis-formatted at line 5 of the input file
-"""
-
-runOneTest("D01")
 
 
 ########################################

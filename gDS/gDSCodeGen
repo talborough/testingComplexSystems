@@ -3,6 +3,7 @@
 Status = """
 +++ - gDSCodeGen - Generate gDS code from a user-supplied data definition file.
 
+    V0107 - 10/22/2025 16:00 - Add double underscore detection
     V0106 - 10/21/2025 19:00 - Fix up RowStatus handling
     V0105 - 10/14/2025 15:45 - Raise KeyError on entry of dup key in index,
     V0104 - 03/31/2025 14:50 - Remove silly code.
@@ -16,7 +17,7 @@ Status = """
 ---
 """
 
-# This starts by scanning the input file over and over again (in "passes"), looking for invalid syntax and symantics.
+# This starts by scanning the input file over and over again (in "passes"), looking for invalid syntax and semantics.
 # By the time the passes are done the input file has been "validated" and the code generators can work with impunity.
 #
 
@@ -117,6 +118,11 @@ def verifyAllPrimaryKeywordsAreValid():
                 if (primaryKeyword == "defineTable") and ("_" in elementName):
                 
                     print (f"{codeLine()}A 'defineTable' was found with underscores in the table name at line {lineIndex} of the input file")
+                    exit (1)
+
+                # Look for 2 or more concatenated underscores in element name
+                if (primaryKeyword in ("defineColumn", "defineIndex")) and ("__" in elementName):
+                    print (f"{codeLine()}Concatenated underscores at line {lineIndex} of the input file")
                     exit (1)
 
     return
@@ -267,17 +273,13 @@ def verifyRefColumns():
             #-# Verify Ref is not to this table and is some other table
             if primaryKeyword == "defineColumn":
                 if elementName.endswith("_Ref"):
-                    if elementName.count("_") != 2:
-                        print (f"{codeLine()}Reference column mis-formatted at line {lineIndex} of the input file")
+                    (srcTable, destTable, dummy) = elementName.split("_", 2)
+                    if destTable == currentTableName:
+                        print (f"{codeLine()}Reference column cites current table at line {lineIndex} of the input file")
                         exit (1)
-                    else:
-                        (srcTable, destTable, dummy) = elementName.split("_", 2)
-                        if destTable == currentTableName:
-                            print (f"{codeLine()}Reference column cites current table at line {lineIndex} of the input file")
-                            exit (1)
-                        if destTable not in AllTableNames:
-                            print (f"{codeLine()}Reference column refers to a non-existant table at line {lineIndex} of the input file")
-                            exit (1)
+                    if destTable not in AllTableNames:
+                        print (f"{codeLine()}Reference column refers to a non-existant table at line {lineIndex} of the input file")
+                        exit (1)
 
     return
 
