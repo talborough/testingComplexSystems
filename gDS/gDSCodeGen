@@ -3,6 +3,7 @@
 Status = """
 +++ - gDSCodeGen - Generate gDS code from a user-supplied data definition file.
 
+    V0106 - 10/21/2025 19:00 - Fix up RowStatus handling
     V0105 - 10/14/2025 15:45 - Raise KeyError on entry of dup key in index,
     V0104 - 03/31/2025 14:50 - Remove silly code.
     V0103 - 03/05/2024 06:57 - Fix dump format.
@@ -207,7 +208,7 @@ def verifyNoDuplicateElementNames():
 
 
 #
-#-# (Pass J) Look for inner keywords lead with table names
+#-# (Pass J) Look for inner keywords to lead with same table names
 #
 def verifyLeadingTableNames():
 
@@ -263,7 +264,7 @@ def verifyRefColumns():
             elif primaryKeyword == "endTable":
                 currentTableName = None
         
-            #-# Verify Ref is not to this table and is some table
+            #-# Verify Ref is not to this table and is some other table
             if primaryKeyword == "defineColumn":
                 if elementName.endswith("_Ref"):
                     if elementName.count("_") != 2:
@@ -329,9 +330,9 @@ def verifyIndexs():
 
 
 #
-#-# (Pass F) All tables need a Name column
+#-# (Pass F) All tables need Name and RowStatus columns and the RowStatus column must be last
 #
-def verifyNameColumnExists():
+def verify2ColumnsExist():
 
     lineIndex = 0
     currentTableName = None
@@ -345,15 +346,19 @@ def verifyNameColumnExists():
             if primaryKeyword == "defineTable":
             
                 currentTableName = elementName
+                
                 nameSeen = False
-                rowStatusSeen = False
+                rowStatusLast = False
                 
             elif primaryKeyword == "defineColumn":
             
+                rowStatusLast = False
+                    
                 if elementName == f"{currentTableName}_Name":
                     nameSeen = True
+
                 if elementName == f"{currentTableName}_RowStatus":
-                    rowStatusSeen = True
+                    rowStatusLast = True
                     
             elif primaryKeyword == "endTable":
             
@@ -361,8 +366,8 @@ def verifyNameColumnExists():
                     print (f"{codeLine()}Table '{currentTableName}' doesn't have a Name column at line {lineIndex} of the input file")
                     exit (1)
                 
-                if not rowStatusSeen:
-                    print (f"{codeLine()}Table '{currentTableName}' doesn't have a RowStatus column at line {lineIndex} of the input file")
+                if not rowStatusLast:
+                    print (f"{codeLine()}Table '{currentTableName}' doesn't have a RowStatus column LAST at line {lineIndex} of the input file")
                     exit (1)
                 
                 currentTableName = None
@@ -467,7 +472,6 @@ def generateAllVariableDefinitions(datastoreNamePrefix):
 
 #
 # Generate code to create a row with the initial values presented in the column definitions
-# The 'RowStatus' column code always gets created goes last.
 #
 def generateRowAddCode():
 
@@ -560,7 +564,6 @@ def generateRowAddCode():
     
     currentTableStartLine = None
     
-    rowStatusAppendCode = None
     rowStatusColumnName = None
     
     while lineIndex < len(LinesToProcess):
@@ -573,6 +576,7 @@ def generateRowAddCode():
             
                 currentTableName = elementName
                 
+                # So we can rewind to table start
                 currentTableStartLine = lineIndex
 
                 # Generate header
@@ -596,19 +600,14 @@ def generateRowAddCode():
                 # Pull table name off the front of the column name to make arg names
                 (dummy, columnArgName) = elementName.split("_", 1)
                 if columnArgName == "RowStatus":
-                    rowStatusAppendCode = f"    {elementName}.append(_{columnArgName})\n"
                     rowStatusColumnName = elementName
-                else:
-                    GeneratedCode += f"    {elementName}.append(_{columnArgName})\n"
+                GeneratedCode += f"    {elementName}.append(_{columnArgName})\n"
                 
             # Add indices after the rest of the header table has been generated
             elif primaryKeyword == "defineIndex":
                 pass
                 
             elif primaryKeyword == "endTable":
-            
-                # At end of each table do the RowStatus column append
-                GeneratedCode += rowStatusAppendCode
             
                 GeneratedCode += f"\n"
                 
@@ -944,8 +943,8 @@ verifyRefColumns()
 #-# (Pass E) Verify indices make sense
 verifyIndexs()
 
-#-# (Pass F) All tables need a Name column
-verifyNameColumnExists()
+#-# (Pass F) All tables need a Name and RowStatus (last) column
+verify2ColumnsExist()
 
 #-# (Pass H) Verify defineList / definedict specify no initial values
 verifyNoListDictInit()

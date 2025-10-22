@@ -501,10 +501,29 @@ endTable
 """
 
 """ - F02 expected output
-Table 'xxx' doesn't have a RowStatus column at line 7 of the input file
+Table 'xxx' doesn't have a RowStatus column LAST at line 7 of the input file
 """
 
 runOneTest("F02")
+
+
+########################################
+
+""" - F03 data
+#
+#
+defineTable yyy
+defineColumn yyy_RowStatus
+defineColumn yyy_Name
+endTable
+#
+"""
+
+""" - F03 expected output
+Table 'yyy' doesn't have a RowStatus column LAST at line 6 of the input file
+"""
+
+runOneTest("F03")
 
 
 ########################################
