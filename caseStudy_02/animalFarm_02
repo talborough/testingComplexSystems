@@ -12,6 +12,7 @@
 
     There is help text just below *or* (./animalFarm_02 --help)
 
+    V0104 - 11/05/2025 15:00 - More fixup for case study videos.
     V0103 - 10/20/2025 19:20 - Fixup for case study videos.
     V0102 - 03/15/2025 21:15 - Remove silly code.
     V0101 - 01/22/2024 09:20 - Fix up for webinars. Change the name of the generated support routines.
@@ -717,8 +718,8 @@ class UI:
         else:
             UI.lastCommand = ""
             print ("")
-            print (f"Invalid or not currently executable command: '{command}'")
-            time.sleep(2)
+            print (f" Invalid or not currently executable command: '{command}'")
+            time.sleep(3)
 
         return
 
@@ -728,7 +729,7 @@ class UI:
     
         # Lines 1 and 2 of header
         gScreenLines[0] = "\033[H\033[J \n"
-        gScreenLines[0] += (" Uptime in seconds = %d;" % \
+        gScreenLines[0] += (" Uptime = %d;" % \
               (time.time() - gStartTime[0]))
 
         # Line 3 of header
@@ -743,7 +744,7 @@ class UI:
         if UI.rxCount:
             x4 = Color.RED
 
-        gScreenLines[0] += (f" Background composition: Tend cow = {x1}{UI.tcCount}{y}; Raise cow = {x2}{UI.rcCount}{y}; Tend chicken = {x3}{UI.txCount}{y}; Raise chicken = {x4}{UI.rxCount}{y} \n")
+        gScreenLines[0] += (f" Background activities: Tend/raise cow = {x1}{UI.tcCount}{y}/{x2}{UI.rcCount}{y}; Tend/raise chx = {x3}{UI.txCount}{y}/{x4}{UI.rxCount}{y} \n")
 
         # Line 4 of header
         x = Color.RED
@@ -913,7 +914,7 @@ class UI:
             if not UI.someBackgroundAlive():
 
                 UI.processDataAndVerifyAll()
-                time.sleep(3)
+                time.sleep(5)
             
                 # If more cycles to run start them else back to interactive or end of batch
                 if time.time() < gRunStopTime[0]:
@@ -951,7 +952,7 @@ class UI:
 
                 # Process end-of-cycle and verify
                 UI.processDataAndVerifyAll()
-                time.sleep(3)
+                time.sleep(5)
             
                 # If more cycles to run start them else back to interactive or end of batch
                 if time.time() < gRunStopTime[0]:
@@ -971,7 +972,7 @@ class UI:
 # gAnimal_RowStatus values:
 #
 #   ""      - Animal is available for use
-#   "xxx"   - Animal is in use for "xxx"
+#   "xxx"   - Animal is in use for "xxx" (can have debug info in it)
 #   None    - Animal is erased
 #
 class Background:
@@ -991,7 +992,8 @@ class Background:
             randomAnimalRef = random.randrange(0, len(gAnimal_RowStatus))
             
             # If a free animal of needed type
-            if (gAnimal_Type[randomAnimalRef] == animalType) and (gAnimal_RowStatus[randomAnimalRef] == ""):
+            if (gAnimal_Type[randomAnimalRef] == animalType) and \
+               (gAnimal_RowStatus[randomAnimalRef] == ""):
 
                 # Lock the row
                 gAnimal_RowStatus[randomAnimalRef] = rowStatus
