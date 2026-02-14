@@ -12,6 +12,7 @@
 
     There is help text just below *or* (./animalFarm_02 --help)
 
+    V0105 - 02/14/2026 17:00 - Add write/read to file.
     V0104 - 11/05/2025 15:00 - More fixup for case study videos.
     V0103 - 10/20/2025 19:20 - Fixup for case study videos.
     V0102 - 03/15/2025 21:15 - Remove silly code.
@@ -117,6 +118,8 @@ The various menu items (interactive as menu selections / batch as Batch argument
          allows "erased" animals to then be compressed out).
          
     ca - This compresses out any erased animals.
+    
+    wa / ra / delanimal - Write animal table to file (animal_table.json), Read animal table from file, Delete all rows in the animal table.
     
     va - This does the above 2 operations and then verifies the "calculated" and "observed" values match (see above).
 
@@ -715,6 +718,24 @@ class UI:
             print ("")
             input (" Hit Enter to continue: ")
             
+        elif command == "wa":
+            gAnimal_WriteToFile("animal_table.json")
+            print (" Wrote animal table to animal_table.json")
+            print ("")
+            input (" Hit Enter to continue: ")
+            
+        elif command == "ra":
+            gAnimal_ReadFromFile("animal_table.json")
+            print (" Read animal table from animal_table.json")
+            print ("")
+            input (" Hit Enter to continue: ")
+            
+        elif command == "delanimal":
+            gAnimal_DeleteRows(rowStatusValueToDelete = '!All!')
+            print (" Deleted all rows in the animal table.")
+            print ("")
+            input (" Hit Enter to continue: ")
+            
         else:
             UI.lastCommand = ""
             print ("")
@@ -784,6 +805,7 @@ class UI:
             gScreenLines[0] += (" \n")
             gScreenLines[0] += (" fs / ad = Display farm summary; display animal detail \n")
             gScreenLines[0] += (" dc / df / da = Dump counties / farms / animals \n")
+            gScreenLines[0] += (" wa / ra / delanimal = Write / Read animal table to file, Delete all animal rows \n")
             
             if not gMakeTestRun[0]:
                 gScreenLines[0] += (" \n")

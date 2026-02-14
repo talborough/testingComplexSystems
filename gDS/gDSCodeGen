@@ -1,8 +1,10 @@
 #!/usr/bin/python3
+"""gDSCodeGen: generate gDS (shared datastore) Python code from a .dd data-definition file."""
 
 Status = """
 +++ - gDSCodeGen - Generate gDS code from a user-supplied data definition file.
 
+    V0108 - 02/06/2026 - Add WriteToFile and ReadFromFile helper routines
     V0107 - 10/22/2025 16:00 - Add double underscore detection
     V0106 - 10/21/2025 19:00 - Fix up RowStatus handling
     V0105 - 10/14/2025 15:45 - Raise KeyError on entry of dup key in index,
@@ -22,414 +24,443 @@ Status = """
 #
 
 #
-# The basics of what we are verifying - see website for a bit more detail:
+# Data definition syntax we verify (see website for more detail):
 #
-# defineTable         TableA
-# defineColumn        TableA_ColumnA - One split on "_" <optional initial column value>
-# defineColumn        TableA_TableB_Ref - 2 splits and ends with "_Ref" <optional initial column value>
-# defineIndex         TableA_ColumnA2Ref - 1 split and ends with "2Ref"
-# endTable
-# defineUnary         Unary <required initial value)>
-# defeineList         ListA
-# defineDict          DictA
+#   defineTable   TableName
+#       Table names must not contain underscores.
+#
+#   defineColumn  TableName_ColumnName  [optional initial value]
+#       One underscore: table_column. Optional initial value.
+#
+#   defineColumn  TableName_OtherTable_Ref  [optional initial value]
+#       Two underscores, ends with "_Ref": foreign key reference.
+#
+#   defineIndex   TableName_ColumnName2Ref
+#       One underscore, ends with "2Ref": index naming.
+#
+#   endTable
+#
+#   defineUnary   Name  <required initial value>
+#
+#   defineList    ListName
+#   defineDict    DictName
+#
 
 import os
 import sys
 import inspect
 
-LinesToProcess = []                                         # The input file text, line by line
-GeneratedCode = ""                                          # The output file contenets
-AllTableNames = []                                          # All the tables names from the first pass - used as needed later
- 
-# Return the currently executing line number (for debug) or comment out
+LinesToProcess = []  # The input file text, line by line
+GeneratedCode = ""  # The output file contents
+AllTableNames = []  # All the tables names from the first pass - used as needed later
+
+
 def codeLine():
-    return ("")
-    #return (f"{inspect.currentframe().f_back.f_lineno}: ")
+    """Return the caller's line number as a string for debug output, or '' if disabled."""
+    return ""
+    # return (f"{inspect.currentframe().f_back.f_lineno}: ")
+
 
 #
 # The code below processes the ".dd" files in multiple passes. The goal here is that each pass completes a simple
 # check of the ".dd" file's syntax or semantics or, generates a specific chunk of code.
 #
 
-#
-# Find, process a bit and return the next non-comment line of input text starting at the given line.
-#
+
 def getNextLineToProcess(lineIndex):
+    """
+    Scan from lineIndex and return the next non-empty, non-comment line.
 
+    Strips comments (from # onward), splits on whitespace. Returns the new line
+    index, the first token (primary keyword), and the next two tokens (e.g.
+    element name, initial value). Missing tokens are Python None.
+    """
     primaryKeyword = None
-    optionalArg = [None, None, None]
+    tokens = [None, None, None]
 
-    while (primaryKeyword is None) and (lineIndex < len(LinesToProcess)):
-    
-        # Get next line
+    while primaryKeyword is None and lineIndex < len(LinesToProcess):
         line = LinesToProcess[lineIndex]
-    
-        # Split off any comment
         if "#" in line:
-            (line, dummy) = line.split("#", 1)
-            
-        # If something left
-        if line != "":
-            
-            # Split what's left by whitespace
-            optionalArg = line.split()
-            
-            #print (optionalArg)
-            
-            # Add possible missing trailing optional args
-            optionalArg += [None, None, None]
-            
-            # Get primaryKeyword for caller to use
-            primaryKeyword = optionalArg[0]
+            line, _ = line.split("#", 1)
+        line = line.strip()
 
-        # Bump line pointer
+        if line:
+            tokens = line.split()
+            tokens += [None, None, None]
+            primaryKeyword = tokens[0]
+
         lineIndex += 1
-        
-    # Note - trailing optionalArgs are the Python None value only if NO text was specified so, if "None" (no quotes)
-    # was specified the string "None" (no quotes) will be returned!!
-    return (lineIndex, primaryKeyword, optionalArg[1], optionalArg[2])
-    
 
-#
-#-# (Pass A) Verify all primary keywords are in our vocabulary
-#
+    return (lineIndex, primaryKeyword, tokens[1], tokens[2])
+
+
 def verifyAllPrimaryKeywordsAreValid():
+    """(Pass A) Ensure every primary keyword is one of the known .dd vocabulary."""
 
     lineIndex = 0
 
     while lineIndex < len(LinesToProcess):
-    
-        (lineIndex, primaryKeyword, elementName, dummy) = getNextLineToProcess(lineIndex)
+
+        lineIndex, primaryKeyword, elementName, dummy = getNextLineToProcess(lineIndex)
 
         if primaryKeyword is not None:
-        
-            if primaryKeyword not in ("defineTable",
-                                      "endTable",
-                                      "defineColumn",
-                                      "defineIndex",
-                                      "defineUnary",
-                                      "defineList",
-                                      "defineDict"):
-                print (f"{codeLine()}Keyword '{primaryKeyword}' not in vocabulary at line {lineIndex} of the input file")
-                exit (1)
-                
+
+            if primaryKeyword not in (
+                "defineTable",
+                "endTable",
+                "defineColumn",
+                "defineIndex",
+                "defineUnary",
+                "defineList",
+                "defineDict",
+            ):
+                print(
+                    f"{codeLine()}Keyword '{primaryKeyword}' not in vocabulary at line {lineIndex} of the input file"
+                )
+                exit(1)
+
             else:
 
                 if (primaryKeyword == "defineTable") and ("_" in elementName):
-                
-                    print (f"{codeLine()}A 'defineTable' was found with underscores in the table name at line {lineIndex} of the input file")
-                    exit (1)
+
+                    print(
+                        f"{codeLine()}A 'defineTable' was found with underscores in the table name at line {lineIndex} of the input file"
+                    )
+                    exit(1)
 
                 # Look for 2 or more concatenated underscores in element name
-                if (primaryKeyword in ("defineColumn", "defineIndex")) and ("__" in elementName):
-                    print (f"{codeLine()}Concatenated underscores at line {lineIndex} of the input file")
-                    exit (1)
+                if (primaryKeyword in ("defineColumn", "defineIndex")) and (
+                    "__" in elementName
+                ):
+                    print(
+                        f"{codeLine()}Concatenated underscores at line {lineIndex} of the input file"
+                    )
+                    exit(1)
 
     return
 
 
-#
-#-# (Pass B) Verify the table definition start / end / index keywords match up correctly
-#
 def verifyBeginEndInnerConsistency():
+    """(Pass B) Ensure defineTable/endTable are balanced and column/index appear only inside a table."""
 
     global AllTableNames
-    
+
     lineIndex = 0
-    
+
     currentTableName = None
-    
+
     while lineIndex < len(LinesToProcess):
-    
-        (lineIndex, primaryKeyword, elementName, dummy) = getNextLineToProcess(lineIndex)
-        
+
+        lineIndex, primaryKeyword, elementName, dummy = getNextLineToProcess(lineIndex)
+
         if primaryKeyword is not None:
-        
-            #-# Check defineTable / endTable match up correctly
+
+            # -# Check defineTable / endTable match up correctly
             if primaryKeyword == "defineTable":
                 # If out of sequence
                 if currentTableName is not None:
-                    print (f"{codeLine()}A 'defineTable' was found before the previous table definition ended at line {lineIndex} of the input file")
-                    exit (1)
-                    
+                    print(
+                        f"{codeLine()}A 'defineTable' was found before the previous table definition ended at line {lineIndex} of the input file"
+                    )
+                    exit(1)
+
                 # Set up to handle a new table definition
                 currentTableName = elementName
                 AllTableNames.append(currentTableName)
-                
+
             elif primaryKeyword == "endTable":
                 # Wipe out current table definition
                 currentTableName = None
-            
-            #-# Check defineColumn / defineIndex are indeed inner
+
+            # -# Check defineColumn / defineIndex are indeed inner
             elif primaryKeyword in ("defineColumn", "defineIndex"):
                 if currentTableName is None:
-                    print (f"{codeLine()}Inner keywords found before 'defineTable' at line {lineIndex} of the input file")
-                    exit (1)
-                    
-                if not elementName.startswith(f"{currentTableName}_"):
-                    print (f"{codeLine()}Inner keywords do not start with current table name at line {lineIndex} of the input file")
-                    exit (1)
+                    print(
+                        f"{codeLine()}Inner keywords found before 'defineTable' at line {lineIndex} of the input file"
+                    )
+                    exit(1)
 
-            #-# Check unary keywords are not inner
+                if not elementName.startswith(f"{currentTableName}_"):
+                    print(
+                        f"{codeLine()}Inner keywords do not start with current table name at line {lineIndex} of the input file"
+                    )
+                    exit(1)
+
+            # -# Check unary keywords are not inner
             elif primaryKeyword in ("defineList", "defineDict", "defineUnary"):
                 if currentTableName is not None:
-                    print (f"{codeLine()}An invalid keyword was found inside the table definition at line {lineIndex} of the input file")
-                    exit (1)
-                
+                    print(
+                        f"{codeLine()}An invalid keyword was found inside the table definition at line {lineIndex} of the input file"
+                    )
+                    exit(1)
+
     if currentTableName is not None:
-        print (f"{codeLine()}An 'endTable' was missing at line {lineIndex} of the input file")
-        exit (1)
-            
+        print(
+            f"{codeLine()}An 'endTable' was missing at line {lineIndex} of the input file"
+        )
+        exit(1)
+
     return
 
 
-#
-#-# (Pass C) Look for duplicate element names and leading and trailing underscores
-#
 def verifyNoDuplicateElementNames():
+    """(Pass C) Ensure element names are unique and have no leading/trailing underscores."""
 
     lineIndex = 0
-    
+
     uniqueElementNames = []
 
-    #-# Verify element names are unique
+    # -# Verify element names are unique
     while lineIndex < len(LinesToProcess):
-    
-        (lineIndex, primaryKeyword, elementName, dummy) = getNextLineToProcess(lineIndex)
+
+        lineIndex, primaryKeyword, elementName, dummy = getNextLineToProcess(lineIndex)
 
         if primaryKeyword is not None:
-        
+
             if elementName in uniqueElementNames:
-                print (f"{codeLine()}Duplicate element name '{elementName}' defined at line {lineIndex} of the input file")
-                exit (1)
+                print(
+                    f"{codeLine()}Duplicate element name '{elementName}' defined at line {lineIndex} of the input file"
+                )
+                exit(1)
             else:
                 # Only end table has no element names
                 if primaryKeyword != "endTable":
                     if elementName.startswith("_") or elementName.endswith("_"):
-                        print (f"{codeLine()}Leading or trailing underscores are not allowed at line {lineIndex} of the input file")
-                        exit (1)
+                        print(
+                            f"{codeLine()}Leading or trailing underscores are not allowed at line {lineIndex} of the input file"
+                        )
+                        exit(1)
                     uniqueElementNames.append(elementName)
-                    
+
     return
 
 
-#
-#-# (Pass J) Look for inner keywords to lead with same table names
-#
 def verifyLeadingTableNames():
+    """(Pass J) Ensure column/index names inside a table start with that table's name."""
 
     lineIndex = 0
-    
+
     currentTableName = None
 
-    #-# Verify inner element names lead with table names
+    # -# Verify inner element names lead with table names
     while lineIndex < len(LinesToProcess):
-    
-        (lineIndex, primaryKeyword, elementName, dummy) = getNextLineToProcess(lineIndex)
+
+        lineIndex, primaryKeyword, elementName, dummy = getNextLineToProcess(lineIndex)
 
         if primaryKeyword is not None:
-        
+
             if primaryKeyword == "defineTable":
-            
+
                 currentTableName = elementName
-                
+
             elif primaryKeyword == "endTable":
-            
+
                 currentTableName = None
-                
+
             elif primaryKeyword in ("defineColumn", "defineIndex"):
-            
+
                 if not elementName.startswith(f"{currentTableName}_"):
-                    print (f"{codeLine()}Inner name does not start with table name at line {lineIndex} of the input file")
-                    exit (1)
-                                
+                    print(
+                        f"{codeLine()}Inner name does not start with table name at line {lineIndex} of the input file"
+                    )
+                    exit(1)
+
     return
 
 
-#
-#-# (Pass D) Verify references to other tables
-#
 def verifyRefColumns():
+    """(Pass D) Ensure _Ref columns reference an existing table and not the current table."""
 
     global AllTableNames
 
-    #-# Verify a ref column cites a valid table other than the current one
+    # -# Verify a ref column cites a valid table other than the current one
     currentTableName = None
 
     lineIndex = 0
-    
+
     while lineIndex < len(LinesToProcess):
-    
-        (lineIndex, primaryKeyword, elementName, dummy) = getNextLineToProcess(lineIndex)
-        
+
+        lineIndex, primaryKeyword, elementName, dummy = getNextLineToProcess(lineIndex)
+
         if primaryKeyword is not None:
-        
-            #-# Get the current table name
+
+            # -# Get the current table name
             if primaryKeyword == "defineTable":
                 currentTableName = elementName
             elif primaryKeyword == "endTable":
                 currentTableName = None
-        
-            #-# Verify Ref is not to this table and is some other table
+
+            # -# Verify Ref is not to this table and is some other table
             if primaryKeyword == "defineColumn":
                 if elementName.endswith("_Ref"):
-                    (srcTable, destTable, dummy) = elementName.split("_", 2)
+                    srcTable, destTable, dummy = elementName.split("_", 2)
                     if destTable == currentTableName:
-                        print (f"{codeLine()}Reference column cites current table at line {lineIndex} of the input file")
-                        exit (1)
+                        print(
+                            f"{codeLine()}Reference column cites current table at line {lineIndex} of the input file"
+                        )
+                        exit(1)
                     if destTable not in AllTableNames:
-                        print (f"{codeLine()}Reference column refers to a non-existant table at line {lineIndex} of the input file")
-                        exit (1)
+                        print(
+                            f"{codeLine()}Reference column refers to a non-existent table at line {lineIndex} of the input file"
+                        )
+                        exit(1)
 
     return
 
 
-#
-#-# (Pass E) Verify indices make sense
-#
-def verifyIndexs():
+def verifyIndices():
+    """(Pass E) Ensure each index refers to an existing column in the same table."""
 
-    #-# Verify an index refers to a column in the current table
+    # -# Verify an index refers to a column in the current table
     lineIndex = 0
-    
+
     while lineIndex < len(LinesToProcess):
-    
-        (lineIndex, primaryKeyword, elementName, dummy) = getNextLineToProcess(lineIndex)
-        
+
+        lineIndex, primaryKeyword, elementName, dummy = getNextLineToProcess(lineIndex)
+
         if primaryKeyword is not None:
-        
-            #-# For each table start, init local data
+
+            # -# For each table start, init local data
             if primaryKeyword == "defineTable":
                 currentTableColumnNames = []
                 currentTableColumnCitations = []
 
-            #-# Acquire list of non-ref column names for this table
+            # -# Acquire list of non-ref column names for this table
             elif primaryKeyword == "defineColumn":
                 # If not a _Ref column
                 if elementName.count("_") == 1:
-                    (dummy, columnName) = elementName.split("_", 1)
+                    dummy, columnName = elementName.split("_", 1)
                     currentTableColumnNames.append(columnName)
 
-            #-# Acquire list of index citations for this table
+            # -# Acquire list of index citations for this table
             elif primaryKeyword == "defineIndex":
                 if elementName.count("_") != 1:
-                    print (f"{codeLine()}Index column mis-formatted at line {lineIndex} of the input file")
-                    exit (1)
-                (tableName, indexCitation) = elementName.split("_", 1)
+                    print(
+                        f"{codeLine()}Index column mis-formatted at line {lineIndex} of the input file"
+                    )
+                    exit(1)
+                tableName, indexCitation = elementName.split("_", 1)
                 if not indexCitation.endswith("2Ref"):
-                    print (f"{codeLine()}Index specification does not end with '2Ref' at line {lineIndex} of the input file")
-                    exit (1)
+                    print(
+                        f"{codeLine()}Index specification does not end with '2Ref' at line {lineIndex} of the input file"
+                    )
+                    exit(1)
                 currentTableColumnCitations.append(indexCitation[:-4])
 
-            #-# At the end of the table check for invalid citations
+            # -# At the end of the table check for invalid citations
             elif primaryKeyword == "endTable":
                 for columnName in currentTableColumnCitations:
                     if columnName not in currentTableColumnNames:
-                        print (f"{codeLine()}Index specification '{columnName}' doesn't appear in table definition at line {lineIndex} of the input file")
-                        exit (1)
+                        print(
+                            f"{codeLine()}Index specification '{columnName}' doesn't appear in table definition at line {lineIndex} of the input file"
+                        )
+                        exit(1)
 
     return
 
 
-#
-#-# (Pass F) All tables need Name and RowStatus columns and the RowStatus column must be last
-#
-def verify2ColumnsExist():
+def verifyRequiredColumnsExist():
+    """(Pass F) Ensure every table has a Name column and RowStatus as the last column."""
 
     lineIndex = 0
     currentTableName = None
 
     while lineIndex < len(LinesToProcess):
-    
-        (lineIndex, primaryKeyword, elementName, dummy) = getNextLineToProcess(lineIndex)
-        
+
+        lineIndex, primaryKeyword, elementName, dummy = getNextLineToProcess(lineIndex)
+
         if primaryKeyword is not None:
-        
+
             if primaryKeyword == "defineTable":
-            
+
                 currentTableName = elementName
-                
+
                 nameSeen = False
                 rowStatusLast = False
-                
+
             elif primaryKeyword == "defineColumn":
-            
+
                 rowStatusLast = False
-                    
+
                 if elementName == f"{currentTableName}_Name":
                     nameSeen = True
 
                 if elementName == f"{currentTableName}_RowStatus":
                     rowStatusLast = True
-                    
+
             elif primaryKeyword == "endTable":
-            
+
                 if not nameSeen:
-                    print (f"{codeLine()}Table '{currentTableName}' doesn't have a Name column at line {lineIndex} of the input file")
-                    exit (1)
-                
+                    print(
+                        f"{codeLine()}Table '{currentTableName}' doesn't have a Name column at line {lineIndex} of the input file"
+                    )
+                    exit(1)
+
                 if not rowStatusLast:
-                    print (f"{codeLine()}Table '{currentTableName}' doesn't have a RowStatus column LAST at line {lineIndex} of the input file")
-                    exit (1)
-                
+                    print(
+                        f"{codeLine()}Table '{currentTableName}' doesn't have a RowStatus column LAST at line {lineIndex} of the input file"
+                    )
+                    exit(1)
+
                 currentTableName = None
 
     return
 
 
-#
-#-# (Pass H) Verify defineList / defineDict specify no initial values
-#
 def verifyNoListDictInit():
+    """(Pass H) Ensure defineList and defineDict have no initial value."""
 
     lineIndex = 0
-    
+
     while lineIndex < len(LinesToProcess):
-    
-        (lineIndex, primaryKeyword, elementName, initialValue) = getNextLineToProcess(lineIndex)
-        
+
+        lineIndex, primaryKeyword, elementName, initialValue = getNextLineToProcess(
+            lineIndex
+        )
+
         if primaryKeyword is not None:
-        
+
             if primaryKeyword in ("defineList", "defineDict"):
                 if initialValue is not None:
-                    print (f"{codeLine()}'defineList/Dict' can not have an initial value at line {lineIndex} of the input file")
-                    exit (1)
-                    
+                    print(
+                        f"{codeLine()}'defineList/Dict' can not have an initial value at line {lineIndex} of the input file"
+                    )
+                    exit(1)
+
     return
 
 
-#
-#-# (Pass I) Verify unaries have initial values
-#
-def verifyColumnUnariwaHaveInits():
+def verifyColumnUnaryHaveInits():
+    """(Pass I) Ensure every defineUnary has an initial value."""
 
     lineIndex = 0
-    
+
     while lineIndex < len(LinesToProcess):
-    
-        (lineIndex, primaryKeyword, elementName, initialValue) = getNextLineToProcess(lineIndex)
-        
+
+        lineIndex, primaryKeyword, elementName, initialValue = getNextLineToProcess(
+            lineIndex
+        )
+
         if primaryKeyword is not None:
-        
+
             if (primaryKeyword == "defineUnary") and (initialValue is None):
-                print (f"{codeLine()}'defineUnary' must have an initial value at line {lineIndex} of the input file")
-                exit (1)
-                
+                print(
+                    f"{codeLine()}'defineUnary' must have an initial value at line {lineIndex} of the input file"
+                )
+                exit(1)
+
     return
 
 
-#
-# Generate the code that defines *all* the global shared variables
-# Unaries are initialized too
-#
 def generateAllVariableDefinitions(datastoreNamePrefix):
+    """Emit code that defines all global shared lists/dicts; unaries are initialized here."""
 
     global GeneratedCode
 
     lineIndex = 0
-    
+
     # Create start of import file.
-    
+
     GeneratedCode += f"# To consume this file in a Python program:\n"
     GeneratedCode += f"\n"
     GeneratedCode += f"#     exec (open('{datastoreNamePrefix}.py').read())\n"
@@ -437,147 +468,126 @@ def generateAllVariableDefinitions(datastoreNamePrefix):
     GeneratedCode += f"# Start of gDS include file ...\n"
     GeneratedCode += f"\n"
     GeneratedCode += f"from multiprocessing import Manager\n"
+    GeneratedCode += f"import json\n"
     GeneratedCode += f"gDSMgr = Manager()\n"
 
     # Define all the variables needed. Initialize "defineUnary" ones.
     while lineIndex < len(LinesToProcess):
-    
-        (lineIndex, primaryKeyword, elementName, initialValue) = getNextLineToProcess(lineIndex)
+
+        lineIndex, primaryKeyword, elementName, initialValue = getNextLineToProcess(
+            lineIndex
+        )
 
         if primaryKeyword is not None:
 
             if primaryKeyword == "defineTable":
                 GeneratedCode += f"\n"
                 GeneratedCode += f"#\n"
-                GeneratedCode += f"# Define global shared variables for entity {elementName}\n"
+                GeneratedCode += (
+                    f"# Define global shared variables for entity {elementName}\n"
+                )
                 GeneratedCode += f"#\n"
-                
+
             elif primaryKeyword == "defineColumn":
                 GeneratedCode += f"{elementName} = gDSMgr.list()\n"
-                
+
             elif primaryKeyword == "defineUnary":
                 GeneratedCode += f"\n"
                 GeneratedCode += f"{elementName} = gDSMgr.list()\n"
                 GeneratedCode += f"{elementName}.append({initialValue})\n"
-                
+
             elif primaryKeyword == "defineIndex":
                 GeneratedCode += f"{elementName} = gDSMgr.dict()\n"
-                
+
             elif primaryKeyword == "defineList":
                 GeneratedCode += f"{elementName} = gDSMgr.list()\n"
-                
+
             elif primaryKeyword == "defineDict":
                 GeneratedCode += f"{elementName} = gDSMgr.dict()\n"
-                
+
             elif primaryKeyword == "endTable":
                 pass
 
-#
-# Generate code to create a row with the initial values presented in the column definitions
-#
+
 def generateRowAddCode():
-
+    """Emit code for each table's AddARow: append columns and update indices."""
     global GeneratedCode
-    
-    # The functions below walk through one table's worth of columns doing various things.
-    
-    # Re-scan this table's definition generating optional manditory arguments
-    def addRequiredDummyArgs(lineIndex2):
-    
+
+    def addRequiredDummyArgs(tableStartLine):
+        """Emit function parameters for columns that have no initial value (caller must supply)."""
         global GeneratedCode
-        
-        primaryKeyword = ""
-        
-        if primaryKeyword is not None:
+        lineIdx, primaryKeyword = tableStartLine, ""
+        while primaryKeyword != "endTable":
+            lineIdx, primaryKeyword, elementName, initialValue = getNextLineToProcess(
+                lineIdx
+            )
+            if primaryKeyword == "defineColumn" and initialValue is None:
+                _, columnArgName = elementName.split("_", 1)
+                GeneratedCode += f"    _{columnArgName},\\\n"
+        return
 
-            while primaryKeyword != "endTable":
+    def addOptionalDummyArgs(tableStartLine):
+        """Emit function parameters for columns that have an initial value (defaulted)."""
+        global GeneratedCode
+        lineIdx, primaryKeyword = tableStartLine, ""
+        while primaryKeyword != "endTable":
+            lineIdx, primaryKeyword, elementName, initialValue = getNextLineToProcess(
+                lineIdx
+            )
+            if primaryKeyword == "defineColumn" and initialValue is not None:
+                _, columnArgName = elementName.split("_", 1)
+                GeneratedCode += f"    _{columnArgName} = {initialValue},\\\n"
+        return
 
-                (lineIndex2, primaryKeyword, elementName, initialValue) = getNextLineToProcess(lineIndex2)
+    def addAllDefineIndexCode(tableStartLine):
+        """Emit code that updates index dicts when a new row is added; raises KeyError on duplicate key."""
+        global GeneratedCode
+        lineIdx, primaryKeyword = tableStartLine, ""
+        while primaryKeyword != "endTable":
+            lineIdx, primaryKeyword, fqDictName, _ = getNextLineToProcess(lineIdx)
+            if primaryKeyword == "defineIndex":
 
-                if primaryKeyword == "defineColumn":
+                fqColumnName = fqDictName[:-4]
 
-                    # Only generate required dummy args
-                    if initialValue is None:
-                        # Pull table name off the front of the column name to make arg names
-                        (dummy, columnArgName) = elementName.split("_", 1)
-                        GeneratedCode += f"    _{columnArgName},\\\n"
+                # See if to-be-inserted column value is already in dictionary
+                GeneratedCode += (
+                    f"    thisRef = len({currentTableName}_RowStatus) - 1\n"
+                )
+                GeneratedCode += f"    if {fqColumnName}[thisRef] in {fqDictName}:\n"
+                GeneratedCode += f"        print('')\n"
+                GeneratedCode += f"        raise KeyError('Duplicate key in {fqDictName}; value = ', {fqColumnName}[thisRef])\n"
+                GeneratedCode += f"        print('')\n"
+                GeneratedCode += f"\n"
+                GeneratedCode += (
+                    f"    {fqDictName}[{fqColumnName}[thisRef]] = thisRef\n"
+                )
+                GeneratedCode += f"\n"
 
         return
 
-    # Re-scan this table's definition generating optional dummy arguments
-    def addOptionalDummyArgs(lineIndex2):
-    
-        global GeneratedCode
-        
-        primaryKeyword = ""
-        
-        if primaryKeyword is not None:
-
-            while primaryKeyword != "endTable":
-
-                (lineIndex2, primaryKeyword, elementName, initialValue) = getNextLineToProcess(lineIndex2)
-
-                if primaryKeyword == "defineColumn":
-
-                    # Generate only required dummy args here
-                    if initialValue is not None:
-                        # Pull table name off the front of the column name to make arg names
-                        (dummy, columnArgName) = elementName.split("_", 1)
-                        GeneratedCode += f"    _{columnArgName} = {initialValue},\\\n"
-
-        return
-        
-    # Add code to set all indices    
-    def addAllDefineIndexCode(lineIndex2):
-    
-        global GeneratedCode
-        
-        primaryKeyword = ""
-
-        if primaryKeyword is not None:
-        
-            while primaryKeyword != "endTable":
-
-                # defineIndex tableA_columnA2Ref
-                (lineIndex2, primaryKeyword, fqDictName, dummy) = getNextLineToProcess(lineIndex2)
-
-                if primaryKeyword == "defineIndex":
-                
-                    fqColumnName = fqDictName[:-4]
-
-                    # See if to-be-inserted column value is already in dictionary
-                    GeneratedCode += f"    thisRef = len({currentTableName}_RowStatus) - 1\n"
-                    GeneratedCode += f"    if {fqColumnName}[thisRef] in {fqDictName}:\n"
-                    GeneratedCode += f"        print ('')\n"
-                    GeneratedCode += f"        raise KeyError ('Duplicate key in {fqDictName}; value = ', {fqColumnName}[thisRef])\n"
-                    GeneratedCode += f"        print ('')\n"
-                    GeneratedCode += f"\n"
-                    GeneratedCode += f"    {fqDictName}[{fqColumnName}[thisRef]] = thisRef\n"
-                    GeneratedCode += f"\n"
-
-        return
-        
     #
     # Main part of initial definition
     #
     lineIndex = 0
-    
+
     currentTableName = None
-    
+
     currentTableStartLine = None
-    
+
     rowStatusColumnName = None
-    
+
     while lineIndex < len(LinesToProcess):
-    
-        (lineIndex, primaryKeyword, elementName, initialValue) = getNextLineToProcess(lineIndex)
-        
+
+        lineIndex, primaryKeyword, elementName, initialValue = getNextLineToProcess(
+            lineIndex
+        )
+
         if primaryKeyword is not None:
-        
+
             if primaryKeyword == "defineTable":
-            
+
                 currentTableName = elementName
-                
+
                 # So we can rewind to table start
                 currentTableStartLine = lineIndex
 
@@ -587,208 +597,157 @@ def generateRowAddCode():
                 GeneratedCode += f"# Add a row to table {elementName}\n"
                 GeneratedCode += f"#\n"
                 GeneratedCode += f"def {currentTableName}_AddARow(\\\n"
-                    
+
                 # Re-scan this table's definition generating required then optional dummy arguments
                 addRequiredDummyArgs(currentTableStartLine)
                 addOptionalDummyArgs(currentTableStartLine)
 
                 # Close out add-a-row header
                 GeneratedCode += f"):\n"
-                
+
                 GeneratedCode += f"\n"
 
             # Now create each column's append of data based on the defineColumn lines
             elif primaryKeyword == "defineColumn":
                 # Pull table name off the front of the column name to make arg names
-                (dummy, columnArgName) = elementName.split("_", 1)
+                dummy, columnArgName = elementName.split("_", 1)
                 if columnArgName == "RowStatus":
                     rowStatusColumnName = elementName
                 GeneratedCode += f"    {elementName}.append(_{columnArgName})\n"
-                
+
             # Add indices after the rest of the header table has been generated
             elif primaryKeyword == "defineIndex":
                 pass
-                
+
             elif primaryKeyword == "endTable":
-            
+
                 GeneratedCode += f"\n"
-                
+
                 # Process any 'defineIndex' citations
                 addAllDefineIndexCode(currentTableStartLine)
 
                 # Generate return of current table length
                 GeneratedCode += f"    return (len({rowStatusColumnName}) - 1)\n"
-                
+
                 currentTableName = None
-    
+
     return
 
-#
-# Generate code to delete all rows in a table where RowStatus is a specified value.
-# This is really ugly because doing: "<list> = ..." "de-globals" the list.
-#
-def generateDeleteTableRowCode():
 
+def generateDeleteTableRowCode():
+    """
+    Emit code for each table's DeleteRows: remove rows by RowStatus, compress columns.
+    Uses local temp lists and copy-back because reassigning shared lists would break multiprocessing.
+    """
     global GeneratedCode
-    
-    #
-    # Each routine below indexes once through the current table definition
-    #
-    
-    # Look to see if we have to bother with managing indices
-    def lookForAnyIndexDefinition(lineIndex2):
-    
-        global GeneratedCode
-        
-        primaryKeyword = ""
-        
+
+    def tableHasAnyIndex(tableStartLine):
+        """Return True if this table definition contains at least one defineIndex."""
+        lineIdx, primaryKeyword = tableStartLine, ""
         while primaryKeyword != "endTable":
-            (lineIndex2, primaryKeyword, elementName, var1) = getNextLineToProcess(lineIndex2)
+            lineIdx, primaryKeyword, elementName, _ = getNextLineToProcess(lineIdx)
             if primaryKeyword == "defineIndex":
                 return True
         return False
 
-    # Add the definition of the local temp arrays to the compressor code
-    def defineLocalTempArrays(lineIndex2):
-    
+    def defineLocalTempArrays(tableStartLine):
+        """Emit local list variables (one per column) used to hold undeleted rows."""
         global GeneratedCode
-        
-        primaryKeyword = ""
-        
+        lineIdx, primaryKeyword = tableStartLine, ""
         while primaryKeyword != "endTable":
-            (lineIndex2, primaryKeyword, elementName, var1) = getNextLineToProcess(lineIndex2)
+            lineIdx, primaryKeyword, elementName, _ = getNextLineToProcess(lineIdx)
             if primaryKeyword == "defineColumn":
-                # Pull table name off the front of the column name to make arg names
-                (tableName, columnName) = elementName.split("_", 1)
-                # Create temporary local columns
+                tableName, columnName = elementName.split("_", 1)
                 GeneratedCode += f"    _{columnName} = []\n"
-            
         GeneratedCode += f"\n"
-        
         return
 
-    # Remove index entries from deleted rows
-    #
-    # defineIndex TableA_Name2Ref
-    # del tableA_Name2Ref[TableA_Name[thisRef]]
-    #
-    def addRemoveOfDeletedIndexEntries(lineIndex2):
-
+    def addRemoveOfDeletedIndexEntries(tableStartLine):
+        """Emit code to remove deleted rows' keys from each index dict."""
         global GeneratedCode
-        
-        primaryKeyword = ""
-        
+        lineIdx, primaryKeyword = tableStartLine, ""
         while primaryKeyword != "endTable":
-        
-            (lineIndex2, primaryKeyword, elementName, var1) = getNextLineToProcess(lineIndex2)
-            
+            lineIdx, primaryKeyword, elementName, _ = getNextLineToProcess(lineIdx)
             if primaryKeyword == "defineIndex":
-                (tableName, indexName) = elementName.split("_", 1)
+                tableName, indexName = elementName.split("_", 1)
                 targetColumnName = indexName[:-4]
                 GeneratedCode += f"            del {elementName}[{tableName}_{targetColumnName}[rowRef]]\n"
-                
         return
 
-    # Add code to copy 1 row's column to the temp array
-    def copyUndeletedRows(lineIndex2):
-    
+    def copyUndeletedRows(tableStartLine):
+        """Emit code to append one row's column values into the temp lists (for kept rows)."""
         global GeneratedCode
-        
-        primaryKeyword = ""
-        
+        lineIdx, primaryKeyword = tableStartLine, ""
         while primaryKeyword != "endTable":
-            (lineIndex2, primaryKeyword, elementName, var1) = getNextLineToProcess(lineIndex2)
+            lineIdx, primaryKeyword, elementName, _ = getNextLineToProcess(lineIdx)
             if primaryKeyword == "defineColumn":
-                (tableName, columnName) = elementName.split("_", 1)
-                # For each column copy undeleted column data over to the temporary columns
-                GeneratedCode += f"            _{columnName}.append({elementName}[rowRef])\n"
-
+                tableName, columnName = elementName.split("_", 1)
+                GeneratedCode += (
+                    f"            _{columnName}.append({elementName}[rowRef])\n"
+                )
         GeneratedCode += f"\n"
-              
         return
-        
-    # Add code to delete all the data in the original lists (the only way it works)!
-    def clearOriginalColumns(lineIndex2):
-    
+
+    def clearOriginalColumns(tableStartLine):
+        """Emit code to clear each global column list (del col[:]) so we can refill from temps."""
         global GeneratedCode
-        
-        primaryKeyword = ""
-        
+        lineIdx, primaryKeyword = tableStartLine, ""
         while primaryKeyword != "endTable":
-            (lineIndex2, primaryKeyword, elementName, var1) = getNextLineToProcess(lineIndex2)
+            lineIdx, primaryKeyword, elementName, _ = getNextLineToProcess(lineIdx)
             if primaryKeyword == "defineColumn":
-                # Delete all entries in existing gDSMgr lists (the only way to do this job I'm afraid)
                 GeneratedCode += f"    del {elementName}[:]\n"
-                
         GeneratedCode += f"\n"
-        
         return
 
-    # Add code to copy data from the temp arrays back to the global shared arrays
-    def addCopyBackCode(lineIndex2):
-    
+    def addCopyBackCode(tableStartLine):
+        """Emit loop that copies temp lists back into the global column lists."""
         global GeneratedCode
-        
-        primaryKeyword = ""
-        
-        # Get ready to copy from the temp columns to the data back to the original columns
         GeneratedCode += f"    for rowRef in range(len(_RowStatus)):\n"
-                    
+        lineIdx, primaryKeyword = tableStartLine, ""
         while primaryKeyword != "endTable":
-        
-            (lineIndex2, primaryKeyword, elementName, var1) = getNextLineToProcess(lineIndex2)
-            
+            lineIdx, primaryKeyword, elementName, _ = getNextLineToProcess(lineIdx)
+
             if primaryKeyword == "defineColumn":
-                # Copy over each column element
-                (tableName, columnName) = elementName.split("_", 1)
-                GeneratedCode += f"        {elementName}.append(_{columnName}[rowRef])\n"
-             
+                tableName, columnName = elementName.split("_", 1)
+                GeneratedCode += (
+                    f"        {elementName}.append(_{columnName}[rowRef])\n"
+                )
         GeneratedCode += f"\n"
-             
         return
 
-    # Add code to set the correct index values
-    # gTableA_Name2Ref[_Name[rowRef] = rowRef
-    def addCorrectIndexValueCode(lineIndex2):
-    
+    def addCorrectIndexValueCode(tableStartLine):
+        """Emit code to repoint each index dict so key -> new rowRef after compress."""
         global GeneratedCode
-        
-        primaryKeyword = ""
-        
+        lineIdx, primaryKeyword = tableStartLine, ""
         while primaryKeyword != "endTable":
-        
-            (lineIndex2, primaryKeyword, elementName, var1) = getNextLineToProcess(lineIndex2)
-            
+            lineIdx, primaryKeyword, elementName, _ = getNextLineToProcess(lineIdx)
             if primaryKeyword == "defineIndex":
-                # Set correct / new ref of each index
-                (tableName, columnName) = elementName.split("_", 1)
+                tableName, columnName = elementName.split("_", 1)
                 targetColumnName = columnName[:-4]
                 GeneratedCode += f"        {elementName}[{tableName}_{targetColumnName}[rowRef]] = rowRef\n"
-                
         GeneratedCode += f"\n"
-             
         return
 
     lineIndex = 0
 
     currentTableName = None
-    
+
     someIndexSeen = False
-    
+
     while lineIndex < len(LinesToProcess):
-    
-        (lineIndex, primaryKeyword, elementName, var1) = getNextLineToProcess(lineIndex)
-        
+
+        lineIndex, primaryKeyword, elementName, var1 = getNextLineToProcess(lineIndex)
+
         if primaryKeyword is not None:
-        
+
             # All code gets generated by defineTable and by the table scanners above
             if primaryKeyword == "defineTable":
 
                 currentTableName = elementName
-                    
+
                 # Look to see if we have to bother with managing indices for this table
-                someIndexSeen = lookForAnyIndexDefinition(lineIndex)
-            
+                someIndexSeen = tableHasAnyIndex(lineIndex)
+
                 GeneratedCode += f"\n"
                 GeneratedCode += f"#\n"
                 GeneratedCode += f"# Delete erased rows in table {elementName}\n"
@@ -801,13 +760,15 @@ def generateDeleteTableRowCode():
                 defineLocalTempArrays(lineIndex)
 
                 # Set up to copy undeleted columns and delete deleted index data
-                GeneratedCode += f"    for rowRef in range(len({currentTableName}_RowStatus)):\n"
+                GeneratedCode += (
+                    f"    for rowRef in range(len({currentTableName}_RowStatus)):\n"
+                )
                 GeneratedCode += f"        if (rowStatusValueToDelete == '!All!') or ({currentTableName}_RowStatus[rowRef] == rowStatusValueToDelete):\n"
                 GeneratedCode += f"            pass\n"
-            
+
                 # Remove entries from deleted rows from whatever indices exist
                 addRemoveOfDeletedIndexEntries(lineIndex)
-                    
+
                 GeneratedCode += f"        else:\n"
                 GeneratedCode += f"            pass\n"
 
@@ -816,37 +777,36 @@ def generateDeleteTableRowCode():
 
                 # Delete all data from original columns in the table using a "del"
                 clearOriginalColumns(lineIndex)
-                    
+
                 # And add code to copy temp arrays back to global columns
                 addCopyBackCode(lineIndex)
 
                 if someIndexSeen:
                     # Index over a handy (correct) column
                     GeneratedCode += f"    for rowRef in range(len(_RowStatus)):\n"
-                    
+
                     # Add code to correct the Ref values
                     addCorrectIndexValueCode(lineIndex)
 
                 GeneratedCode += f"    return (len({currentTableName}_RowStatus))\n"
 
             # At this level skip anything that's not a defineTable
-            
-#
-# Generate code to print out the rows in each table for debug
-#
+
+
 def generateTableDumpCode():
+    """Emit a DumpRows function per table to print row data (for debugging)."""
 
     global GeneratedCode
 
     lineIndex = 0
     currentTableName = None
-    
+
     while lineIndex < len(LinesToProcess):
-    
-        (lineIndex, primaryKeyword, elementName, arg1) = getNextLineToProcess(lineIndex)
-        
+
+        lineIndex, primaryKeyword, elementName, arg1 = getNextLineToProcess(lineIndex)
+
         if primaryKeyword is not None:
-        
+
             if primaryKeyword == "defineTable":
 
                 currentTableName = elementName
@@ -856,9 +816,9 @@ def generateTableDumpCode():
                 GeneratedCode += f"# Print values out for table '{currentTableName}'\n"
                 GeneratedCode += f"#\n"
                 GeneratedCode += f"def {currentTableName}_DumpRows(rangeListToDump = None, outFile = sys.stdout):\n"
-                
+
                 headerGenerated = False
-                
+
             elif primaryKeyword == "defineColumn":
                 # If dumping the first column of the table generate a header with information about the table
                 if not headerGenerated:
@@ -866,42 +826,150 @@ def generateTableDumpCode():
                     headerGenerated = True
 
                     GeneratedCode += "\n"
-                    GeneratedCode += f"    print (f'**************', file = outFile)\n"
-                    GeneratedCode += f"    print (f'**************', file = outFile)\n"
-                    GeneratedCode += f"    print ('    Table %24s has %d entries' % ('{currentTableName}', len({currentTableName}_RowStatus)), file = outFile)\n"
-                    GeneratedCode += f"    print (f'**************', file = outFile)\n"
-                    GeneratedCode += f"    print (f'**************', file = outFile)\n"
-                    GeneratedCode += f"    print (f'', file = outFile)\n"
+                    GeneratedCode += f"    print(f'**************', file = outFile)\n"
+                    GeneratedCode += f"    print(f'**************', file = outFile)\n"
+                    GeneratedCode += f"    print('    Table %24s has %d entries' % ('{currentTableName}', len({currentTableName}_RowStatus)), file = outFile)\n"
+                    GeneratedCode += f"    print(f'**************', file = outFile)\n"
+                    GeneratedCode += f"    print(f'**************', file = outFile)\n"
+                    GeneratedCode += f"    print(f'', file = outFile)\n"
                     GeneratedCode += "\n"
-                    GeneratedCode += f"    for i in range (0, len({currentTableName}_RowStatus)):\n"
+                    GeneratedCode += (
+                        f"    for i in range(0, len({currentTableName}_RowStatus)):\n"
+                    )
                     GeneratedCode += f"        if (rangeListToDump is None) or (i in rangeListToDump):\n"
-                    GeneratedCode += f"            print ('    Row reference = %d' % (i), file = outFile)\n"
-                    
+                    GeneratedCode += f"            print('    Row reference = %d' % (i), file = outFile)\n"
+
                 # If an reference to another table
                 if elementName.endswith("_Ref"):
-                    (dummy, destTableName, dummy) = elementName.split("_", 2)
-                    GeneratedCode += f"            print ('    %30s = %10s  (%30s)' % ('{elementName}', {elementName}[i], {destTableName}_Name[{elementName}[i]]), file = outFile)\n"
-                    
+                    dummy, destTableName, dummy = elementName.split("_", 2)
+                    GeneratedCode += f"            print('    %30s = %10s  (%30s)' % ('{elementName}', {elementName}[i], {destTableName}_Name[{elementName}[i]]), file = outFile)\n"
+
                 else:
-                    GeneratedCode += f"            print ('    %30s = %10s' % ('{elementName}', {elementName}[i]), file = outFile)\n"
-                    
+                    GeneratedCode += f"            print('    %30s = %10s' % ('{elementName}', {elementName}[i]), file = outFile)\n"
+
             elif primaryKeyword == "defineIndex":
                 pass
-                
+
             elif primaryKeyword == "endTable":
                 GeneratedCode += "\n"
-                GeneratedCode += f"            print ('', file = outFile)\n"
+                GeneratedCode += f"            print('', file = outFile)\n"
                 GeneratedCode += "\n"
                 GeneratedCode += f"    return\n"
                 GeneratedCode += "\n"
                 currentTableName = None
-            
 
-###################################
-###
-### Main
-###
-###################################
+
+def generateTableWriteToFileCode():
+    """Emit a WriteToFile function per table: write table rows to a JSON file."""
+    global GeneratedCode
+
+    lineIndex = 0
+    currentTableName = None
+
+    while lineIndex < len(LinesToProcess):
+        lineIndex, primaryKeyword, elementName, _ = getNextLineToProcess(lineIndex)
+
+        if primaryKeyword is not None:
+            if primaryKeyword == "defineTable":
+                currentTableName = elementName
+                GeneratedCode += f"\n"
+                GeneratedCode += f"#\n"
+                GeneratedCode += (
+                    f"# Write table '{currentTableName}' to a JSON file\n"
+                )
+                GeneratedCode += f"#\n"
+                GeneratedCode += (
+                    f"def {currentTableName}_WriteToFile(filePath, "
+                    f"rangeListToDump=None):\n"
+                )
+                GeneratedCode += f"    rows = []\n"
+                GeneratedCode += (
+                    f"    for i in range(len({currentTableName}_RowStatus)):\n"
+                )
+                GeneratedCode += (
+                    f"        if (rangeListToDump is None) or "
+                    f"(i in rangeListToDump):\n"
+                )
+                GeneratedCode += f"            row = {{}}\n"
+
+            elif primaryKeyword == "defineColumn":
+                GeneratedCode += (
+                    f"            row['{elementName}'] = {elementName}[i]\n"
+                )
+
+            elif primaryKeyword == "defineIndex":
+                pass
+
+            elif primaryKeyword == "endTable":
+                GeneratedCode += f"            rows.append(row)\n"
+                GeneratedCode += f"    with open(filePath, 'w') as f:\n"
+                GeneratedCode += f"        json.dump(rows, f, indent=2)\n"
+                GeneratedCode += f"    return\n"
+                GeneratedCode += f"\n"
+                currentTableName = None
+
+    return
+
+
+def generateTableReadFromFileCode():
+    """Emit a ReadFromFile function per table: read JSON file and add rows."""
+    global GeneratedCode
+
+    lineIndex = 0
+    currentTableName = None
+    currentTableStartLine = None
+
+    while lineIndex < len(LinesToProcess):
+        lineIndex, primaryKeyword, elementName, initialValue = (
+            getNextLineToProcess(lineIndex)
+        )
+
+        if primaryKeyword is not None:
+            if primaryKeyword == "defineTable":
+                currentTableName = elementName
+                currentTableStartLine = lineIndex
+                GeneratedCode += f"\n"
+                GeneratedCode += f"#\n"
+                GeneratedCode += (
+                    f"# Read table '{elementName}' from a JSON file\n"
+                )
+                GeneratedCode += f"#\n"
+                GeneratedCode += f"def {currentTableName}_ReadFromFile(filePath):\n"
+                GeneratedCode += f"    with open(filePath) as f:\n"
+                GeneratedCode += f"        rows = json.load(f)\n"
+                GeneratedCode += f"    for row in rows:\n"
+                # Build AddARow call from table columns (required then optional)
+                # Required args: columns with no initial value
+                argsRequired = []
+                argsOptional = []
+                lineIdx, pk = currentTableStartLine, ""
+                while pk != "endTable":
+                    lineIdx, pk, elem, initVal = getNextLineToProcess(lineIdx)
+                    if pk == "defineColumn":
+                        if initVal is None:
+                            argsRequired.append(elem)
+                        else:
+                            argsOptional.append((elem, initVal))
+                argParts = [f"row['{col}']" for col in argsRequired]
+                argParts.extend(
+                    f"row.get('{col}', {default})"
+                    for col, default in argsOptional
+                )
+                argsStr = ", ".join(argParts)
+                GeneratedCode += f"        {currentTableName}_AddARow({argsStr})\n"
+                GeneratedCode += f"    return\n"
+                GeneratedCode += f"\n"
+                currentTableName = None
+
+            elif primaryKeyword in ("defineColumn", "defineIndex", "endTable"):
+                pass
+
+    return
+
+
+# ---------------------------------------------------------------------------
+# Main: read .dd file, run validation passes, then generate .py
+# ---------------------------------------------------------------------------
 
 commandLineArg = sys.argv[1]
 
@@ -912,48 +980,48 @@ for arg in sys.argv:
         commandLineArg = sys.argv[2]
 
 # Disable gratis print of Help
-#if not quietMode:
-#    print (Status)
+# if not quietMode:
+#    print(Status)
 
 # Get the datastore definition file name prefix
 datastoreNamePrefix = commandLineArg
 
 if not os.path.exists(datastoreNamePrefix + ".dd"):
-    print (f"{codeLine()}File {datastoreNamePrefix + '.dd'} does not exist")
-    exit (1)
+    print(f"{codeLine()}File {datastoreNamePrefix + '.dd'} does not exist")
+    exit(1)
 
 # Read in the entire datastore definition file
 LinesToProcess = open(datastoreNamePrefix + ".dd", "r").read().splitlines()
 
 # The functions below iterate through the .dd file over and over making successive checks.
-# The goal is that after all the checks the code generation routines can execute in a straitforward manner.
+# The goal is that after all the checks the code generation routines can execute in a straightforward manner.
 
-#-# (Pass A) Verify all keywords are in our vocabulary
+# -# (Pass A) Verify all keywords are in our vocabulary
 verifyAllPrimaryKeywordsAreValid()
 
-#-# (Pass B) Verify the table definition start / end / index keywords match up correctly
+# -# (Pass B) Verify the table definition start / end / index keywords match up correctly
 verifyBeginEndInnerConsistency()
 
-#-# (Pass C) Look for duplicate table element names (nothing duplicates anywhere)
+# -# (Pass C) Look for duplicate table element names (nothing duplicates anywhere)
 verifyNoDuplicateElementNames()
 
-#-# (Pass J) Verify inner item names lead with table name
+# -# (Pass J) Verify inner item names lead with table name
 verifyLeadingTableNames()
 
-#-# (Pass D) Verify references to other tables
+# -# (Pass D) Verify references to other tables
 verifyRefColumns()
 
-#-# (Pass E) Verify indices make sense
-verifyIndexs()
+# -# (Pass E) Verify indices make sense
+verifyIndices()
 
-#-# (Pass F) All tables need a Name and RowStatus (last) column
-verify2ColumnsExist()
+# -# (Pass F) All tables need a Name and RowStatus (last) column
+verifyRequiredColumnsExist()
 
-#-# (Pass H) Verify defineList / definedict specify no initial values
+# -# (Pass H) Verify defineList / defineDict specify no initial values
 verifyNoListDictInit()
 
-#-# (Pass I) Verify all unaries have initial values
-verifyColumnUnariwaHaveInits()
+# -# (Pass I) Verify all unaries have initial values
+verifyColumnUnaryHaveInits()
 
 # Generate code to declare all global shared lists and dictionaries
 # Unaries will be initialized here
@@ -968,10 +1036,14 @@ generateDeleteTableRowCode()
 # Generate code to print/dump each table's rows when called
 generateTableDumpCode()
 
+# Generate code to dump table to file and load table from file
+generateTableWriteToFileCode()
+generateTableReadFromFileCode()
+
 # Write out the Python file <file name>.py
 open(f"{datastoreNamePrefix}.py", "w").write(GeneratedCode)
 
-print ("")
-print ("Remember to iterate on the 'RowStatus' column of active tables.")
-print (f"Successfully wrote file {datastoreNamePrefix}.py")
-print ("")
+print("")
+print("Remember to iterate on the 'RowStatus' column of active tables.")
+print(f"Successfully wrote file {datastoreNamePrefix}.py")
+print("")

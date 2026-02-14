@@ -361,7 +361,7 @@ endTable
 """
 
 """ - D03 expected output
-Reference column refers to a non-existant table at line 5 of the input file
+Reference column refers to a non-existent table at line 5 of the input file
 """
 
 runOneTest("D03")
