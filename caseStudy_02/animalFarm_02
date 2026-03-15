@@ -12,6 +12,7 @@
 
     There is help text just below *or* (./animalFarm_02 --help)
 
+    V0106 - 03/14/2026 08:30 - Fix up/test write/read.
     V0105 - 02/14/2026 17:00 - Add write/read to file.
     V0104 - 11/05/2025 15:00 - More fixup for case study videos.
     V0103 - 10/20/2025 19:20 - Fixup for case study videos.
@@ -118,8 +119,6 @@ The various menu items (interactive as menu selections / batch as Batch argument
          allows "erased" animals to then be compressed out).
          
     ca - This compresses out any erased animals.
-    
-    wa / ra / delanimal - Write animal table to file (animal_table.json), Read animal table from file, Delete all rows in the animal table.
     
     va - This does the above 2 operations and then verifies the "calculated" and "observed" values match (see above).
 
@@ -260,7 +259,9 @@ class UI:
             # Add animals under lock
             MasterLock.lock()
             
-            animalRef = gAnimal_AddARow(_gFarm_Ref = farmRef, _Name = "%s #%2.2d (%2.2d)" % (animalType, animalNumber + 1, farmRef), _Type = animalType, _RowStatus = "")
+            animalRef = gAnimal_AddARow(_gFarm_Ref = farmRef, _Time = time.time(), \
+                _Name = "%s #%2.2d (%2.2d)" % (animalType, animalNumber + 1, farmRef), \
+                _Type = animalType, _RowStatus = "")
 
             print (f"Added {gAnimal_Name[animalRef]} to {gFarm_Name[farmRef]} in {gCounty_Name[gFarm_gCounty_Ref[farmRef]]}")
             
@@ -501,21 +502,47 @@ class UI:
     # Do all the necessary to update and verify the calculated / observed values
     # Check for running background activity BEFORE calling
     def processDataAndVerifyAll():
-    
-        # MUST update product totals (using possible erased animals) BEFORE compressing them away
+        
         print ("")
         print (" Process before verification:")
         print ("")
-        print ("   1) Update 'total' farm production values with 'new' values from both active and erased animals")
+        print ("   1) Persist and restore data from all 3 tables")
+
+        # Use the write/read helpers
+        gAnimal_WriteToFile("animal_table.json")
+        gFarm_WriteToFile("farm_table.json")
+        gCounty_WriteToFile("county_table.json")
+
+        gAnimal_DeleteRows(rowStatusValueToDelete = '!All!')
+        gFarm_DeleteRows(rowStatusValueToDelete = '!All!')
+        gCounty_DeleteRows(rowStatusValueToDelete = '!All!')
+
+        gAnimal_ReadFromFile("animal_table.json")
+        gFarm_ReadFromFile("farm_table.json")
+        gCounty_ReadFromFile("county_table.json")
+        
+        print ("   2) Verify indices in gAnimal")
+        for rowRef in range(len(gAnimal_RowStatus)):
+            if gAnimal_Name2Ref[gAnimal_Name[rowRef]] != rowRef:
+                print (f"Bad gAnimal_Name2Ref reference at row {rowRef} of gAnimal_Name")
+                exit (1)
+    
+        for rowRef in range(len(gAnimal_RowStatus)):
+            if gAnimal_Time2Ref[gAnimal_Time[rowRef]] != rowRef:
+                print (f"Bad gAnimal_Time2Ref reference at row {rowRef} of gAnimal_Time")
+                exit (1)
+    
+        # MUST update product totals (using possible erased animals) BEFORE compressing them away
+        print ("   3) Update 'total' farm production values with 'new' values from both active and erased animals")
         UI.updateProduction()
 
-        print ("   2) Now we can compress out erased animals")
+        print ("   4) Now we can compress out erased animals")
         UI.compressAnimals()
 
-        print ("   3) Update observed production counts with new production counts from the farms")
+        print ("   5) Update observed production counts with new production counts from the farms")
         UI.updateObserved()
 
-        print ("   4) Verify animal table index (counts then values)")
+        print ("   6) Verify animal table index (counts then values)")
 
         indexBad = False
 
@@ -718,24 +745,6 @@ class UI:
             print ("")
             input (" Hit Enter to continue: ")
             
-        elif command == "wa":
-            gAnimal_WriteToFile("animal_table.json")
-            print (" Wrote animal table to animal_table.json")
-            print ("")
-            input (" Hit Enter to continue: ")
-            
-        elif command == "ra":
-            gAnimal_ReadFromFile("animal_table.json")
-            print (" Read animal table from animal_table.json")
-            print ("")
-            input (" Hit Enter to continue: ")
-            
-        elif command == "delanimal":
-            gAnimal_DeleteRows(rowStatusValueToDelete = '!All!')
-            print (" Deleted all rows in the animal table.")
-            print ("")
-            input (" Hit Enter to continue: ")
-            
         else:
             UI.lastCommand = ""
             print ("")
@@ -805,7 +814,6 @@ class UI:
             gScreenLines[0] += (" \n")
             gScreenLines[0] += (" fs / ad = Display farm summary; display animal detail \n")
             gScreenLines[0] += (" dc / df / da = Dump counties / farms / animals \n")
-            gScreenLines[0] += (" wa / ra / delanimal = Write / Read animal table to file, Delete all animal rows \n")
             
             if not gMakeTestRun[0]:
                 gScreenLines[0] += (" \n")
@@ -1071,7 +1079,7 @@ class Background:
                 # If to create a new cow on the same farm
                 if random.randrange(0, 10) > 3:
                     # Create a new, available cow on the same farm
-                    gAnimal_AddARow(_Type = "Cow", _Name = f"Cow #{time.time()}", \
+                    gAnimal_AddARow(_Type = "Cow", _Time = time.time(), _Name = f"Cow #{time.time()}", \
                                              _gFarm_Ref = gAnimal_gFarm_Ref[animalRef], _RowStatus = "")
                     # Free random target cow
                     newRowStatus = ""
@@ -1143,7 +1151,7 @@ class Background:
                 # If to create a new chicken on the same farm
                 if random.randrange(0, 10) > 3:
                     # Create a new, available chicken on the same farm
-                    gAnimal_AddARow(_Type = "Chicken", _Name = f"Chicken #{time.time()}", \
+                    gAnimal_AddARow(_Type = "Chicken", _Time = time.time(), _Name = f"Chicken #{time.time()}", \
                                              _gFarm_Ref = gAnimal_gFarm_Ref[animalRef], _RowStatus = "")
                     # Release the random target chicken
                     newRowStatus = ""

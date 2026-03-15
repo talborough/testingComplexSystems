@@ -9,7 +9,7 @@
 #
 defineTable     gCounty                                         # Table definition
 defineColumn    gCounty_Name            None                    # The county name
-defineColumn    gCounty_RowStatus                               # For locking the row - not used
+defineColumn    gCounty_RowStatus                               # Not used here
 endTable
 #
 # gFarm - The farms animals belong to. There is no need to manage for concurrency.
@@ -19,7 +19,7 @@ defineColumn    gFarm_Name              None                    # Farm name
 defineColumn    gFarm_gCounty_Ref                               # The county a farm is in
 defineColumn    gFarm_MilkTotal         0                       # Total pumped
 defineColumn    gFarm_EggsTotal         0                       # Total gathered
-defineColumn    gFarm_RowStatus                                 # For locking the row - not used
+defineColumn    gFarm_RowStatus                                 # Not used here
 endTable
 #
 # The animals on a farm. Concurrency is managed with both MasterLock and row locks.
@@ -28,8 +28,10 @@ defineTable     gAnimal                                         # Table definiti
 defineColumn    gAnimal_gFarm_Ref                               # The farm owning the animal
 defineColumn    gAnimal_Type                                    # The kind of animal
 defineColumn    gAnimal_Name            None                    # The animal's name
+defineColumn    gAnimal_Time                                    # For testing multiple indices
 defineColumn    gAnimal_Produced        0                       # Milk or eggs produced
 defineIndex     gAnimal_Name2Ref                                # Use this to verify index behavior
+defineIndex     gAnimal_Time2Ref                                # For testing multiple indices
 defineColumn    gAnimal_RowStatus                               # For locking and managing the row
 endTable
 #

@@ -4,6 +4,7 @@
 Status = """
 +++ - gDSCodeGen - Generate gDS code from a user-supplied data definition file.
 
+    V0109 - 03/14/2026 - Fix indexing support.
     V0108 - 02/06/2026 - Add WriteToFile and ReadFromFile helper routines
     V0107 - 10/22/2025 16:00 - Add double underscore detection
     V0106 - 10/21/2025 19:00 - Fix up RowStatus handling
@@ -508,6 +509,8 @@ def generateAllVariableDefinitions(datastoreNamePrefix):
             elif primaryKeyword == "endTable":
                 pass
 
+    return
+
 
 def generateRowAddCode():
     """Emit code for each table's AddARow: append columns and update indices."""
@@ -543,16 +546,21 @@ def generateRowAddCode():
         """Emit code that updates index dicts when a new row is added; raises KeyError on duplicate key."""
         global GeneratedCode
         lineIdx, primaryKeyword = tableStartLine, ""
+        thisRefEmitted = False
         while primaryKeyword != "endTable":
             lineIdx, primaryKeyword, fqDictName, _ = getNextLineToProcess(lineIdx)
             if primaryKeyword == "defineIndex":
 
                 fqColumnName = fqDictName[:-4]
 
-                # See if to-be-inserted column value is already in dictionary
-                GeneratedCode += (
-                    f"    thisRef = len({currentTableName}_RowStatus) - 1\n"
-                )
+                # See if to-be-inserted column value is already in dictionary.
+                # Emit the 'thisRef' calculation only once per added row, even if
+                # multiple indices exist for the table.
+                if not thisRefEmitted:
+                    GeneratedCode += (
+                        f"    thisRef = len({currentTableName}_RowStatus) - 1\n\n"
+                    )
+                    thisRefEmitted = True
                 GeneratedCode += f"    if {fqColumnName}[thisRef] in {fqDictName}:\n"
                 GeneratedCode += f"        print('')\n"
                 GeneratedCode += f"        raise KeyError('Duplicate key in {fqDictName}; value = ', {fqColumnName}[thisRef])\n"
@@ -617,6 +625,7 @@ def generateRowAddCode():
 
             # Add indices after the rest of the header table has been generated
             elif primaryKeyword == "defineIndex":
+
                 pass
 
             elif primaryKeyword == "endTable":
@@ -636,161 +645,103 @@ def generateRowAddCode():
 
 def generateDeleteTableRowCode():
     """
-    Emit code for each table's DeleteRows: remove rows by RowStatus, compress columns.
-    Uses local temp lists and copy-back because reassigning shared lists would break multiprocessing.
+    Emit code for each table's DeleteRows: iterate rows in reverse and
+    delete candidate rows in-place, then rebuild any indices.
     """
     global GeneratedCode
 
-    def tableHasAnyIndex(tableStartLine):
-        """Return True if this table definition contains at least one defineIndex."""
+    def deleteColumnsAtRowRef(tableStartLine):
+        """Emit code to delete the current rowRef from all column lists."""
+        global GeneratedCode
         lineIdx, primaryKeyword = tableStartLine, ""
+        while primaryKeyword != "endTable":
+            lineIdx, primaryKeyword, elementName, _ = getNextLineToProcess(lineIdx)
+            if primaryKeyword == "defineColumn":
+                GeneratedCode += f"            del {elementName}[rowRef]\n"
+        GeneratedCode += f"\n"
+        return
+
+    def clearAndRebuildIndices(tableStartLine, tableNameForLen):
+        """
+        Emit code to clear all index dicts for this table and
+        rebuild them from the current column data.
+        """
+        global GeneratedCode
+
+        # First clear any indices, if present
+        lineIdx, primaryKeyword = tableStartLine, ""
+        someIndexSeen = False
         while primaryKeyword != "endTable":
             lineIdx, primaryKeyword, elementName, _ = getNextLineToProcess(lineIdx)
             if primaryKeyword == "defineIndex":
-                return True
-        return False
+                someIndexSeen = True
+                GeneratedCode += f"    {elementName}.clear()\n"
 
-    def defineLocalTempArrays(tableStartLine):
-        """Emit local list variables (one per column) used to hold undeleted rows."""
-        global GeneratedCode
-        lineIdx, primaryKeyword = tableStartLine, ""
-        while primaryKeyword != "endTable":
-            lineIdx, primaryKeyword, elementName, _ = getNextLineToProcess(lineIdx)
-            if primaryKeyword == "defineColumn":
-                tableName, columnName = elementName.split("_", 1)
-                GeneratedCode += f"    _{columnName} = []\n"
-        GeneratedCode += f"\n"
-        return
+        # If indices were seen, process them
+        if someIndexSeen:
 
-    def addRemoveOfDeletedIndexEntries(tableStartLine):
-        """Emit code to remove deleted rows' keys from each index dict."""
-        global GeneratedCode
-        lineIdx, primaryKeyword = tableStartLine, ""
-        while primaryKeyword != "endTable":
-            lineIdx, primaryKeyword, elementName, _ = getNextLineToProcess(lineIdx)
-            if primaryKeyword == "defineIndex":
-                tableName, indexName = elementName.split("_", 1)
-                targetColumnName = indexName[:-4]
-                GeneratedCode += f"            del {elementName}[{tableName}_{targetColumnName}[rowRef]]\n"
-        return
+            # Rebuild indices from current column values
+            GeneratedCode += (
+                f"    for rowRef in range(len({tableNameForLen}_RowStatus)):\n"
+            )
 
-    def copyUndeletedRows(tableStartLine):
-        """Emit code to append one row's column values into the temp lists (for kept rows)."""
-        global GeneratedCode
-        lineIdx, primaryKeyword = tableStartLine, ""
-        while primaryKeyword != "endTable":
-            lineIdx, primaryKeyword, elementName, _ = getNextLineToProcess(lineIdx)
-            if primaryKeyword == "defineColumn":
-                tableName, columnName = elementName.split("_", 1)
-                GeneratedCode += (
-                    f"            _{columnName}.append({elementName}[rowRef])\n"
-                )
-        GeneratedCode += f"\n"
-        return
+            lineIdx, primaryKeyword = tableStartLine, ""
+            while primaryKeyword != "endTable":
+                lineIdx, primaryKeyword, elementName, _ = getNextLineToProcess(lineIdx)
+                if primaryKeyword == "defineIndex":
+                    tableName, columnName = elementName.split("_", 1)
+                    targetColumnName = columnName[:-4]
+                    GeneratedCode += (
+                        f"        {elementName}[{tableName}_{targetColumnName}[rowRef]] = rowRef\n"
+                    )
 
-    def clearOriginalColumns(tableStartLine):
-        """Emit code to clear each global column list (del col[:]) so we can refill from temps."""
-        global GeneratedCode
-        lineIdx, primaryKeyword = tableStartLine, ""
-        while primaryKeyword != "endTable":
-            lineIdx, primaryKeyword, elementName, _ = getNextLineToProcess(lineIdx)
-            if primaryKeyword == "defineColumn":
-                GeneratedCode += f"    del {elementName}[:]\n"
-        GeneratedCode += f"\n"
-        return
-
-    def addCopyBackCode(tableStartLine):
-        """Emit loop that copies temp lists back into the global column lists."""
-        global GeneratedCode
-        GeneratedCode += f"    for rowRef in range(len(_RowStatus)):\n"
-        lineIdx, primaryKeyword = tableStartLine, ""
-        while primaryKeyword != "endTable":
-            lineIdx, primaryKeyword, elementName, _ = getNextLineToProcess(lineIdx)
-
-            if primaryKeyword == "defineColumn":
-                tableName, columnName = elementName.split("_", 1)
-                GeneratedCode += (
-                    f"        {elementName}.append(_{columnName}[rowRef])\n"
-                )
-        GeneratedCode += f"\n"
-        return
-
-    def addCorrectIndexValueCode(tableStartLine):
-        """Emit code to repoint each index dict so key -> new rowRef after compress."""
-        global GeneratedCode
-        lineIdx, primaryKeyword = tableStartLine, ""
-        while primaryKeyword != "endTable":
-            lineIdx, primaryKeyword, elementName, _ = getNextLineToProcess(lineIdx)
-            if primaryKeyword == "defineIndex":
-                tableName, columnName = elementName.split("_", 1)
-                targetColumnName = columnName[:-4]
-                GeneratedCode += f"        {elementName}[{tableName}_{targetColumnName}[rowRef]] = rowRef\n"
         GeneratedCode += f"\n"
         return
 
     lineIndex = 0
-
     currentTableName = None
-
-    someIndexSeen = False
 
     while lineIndex < len(LinesToProcess):
 
-        lineIndex, primaryKeyword, elementName, var1 = getNextLineToProcess(lineIndex)
+        lineIndex, primaryKeyword, elementName, _ = getNextLineToProcess(lineIndex)
 
         if primaryKeyword is not None:
 
-            # All code gets generated by defineTable and by the table scanners above
             if primaryKeyword == "defineTable":
 
                 currentTableName = elementName
-
-                # Look to see if we have to bother with managing indices for this table
-                someIndexSeen = tableHasAnyIndex(lineIndex)
+                currentTableStartLine = lineIndex
 
                 GeneratedCode += f"\n"
                 GeneratedCode += f"#\n"
                 GeneratedCode += f"# Delete erased rows in table {elementName}\n"
-                GeneratedCode += f"# Note - this procedure must be written as is because of Python/multiprocessing behavior!\n"
                 GeneratedCode += f"#\n"
-                GeneratedCode += f"def {currentTableName}_DeleteRows(rowStatusValueToDelete = '!All!'):\n"
-                GeneratedCode += f"\n"
-
-                # Add the definition of the local temp arrays to the compressor code
-                defineLocalTempArrays(lineIndex)
-
-                # Set up to copy undeleted columns and delete deleted index data
                 GeneratedCode += (
-                    f"    for rowRef in range(len({currentTableName}_RowStatus)):\n"
+                    f"def {currentTableName}_DeleteRows(rowStatusValueToDelete = '!All!'):\n"
+                )
+                GeneratedCode += f"\n"
+                GeneratedCode += (
+                    f"    for rowRef in range(len({currentTableName}_RowStatus) - 1, -1, -1):\n"
                 )
                 GeneratedCode += f"        if (rowStatusValueToDelete == '!All!') or ({currentTableName}_RowStatus[rowRef] == rowStatusValueToDelete):\n"
-                GeneratedCode += f"            pass\n"
 
-                # Remove entries from deleted rows from whatever indices exist
-                addRemoveOfDeletedIndexEntries(lineIndex)
+                # Delete this row from all column lists
+                deleteColumnsAtRowRef(currentTableStartLine)
 
                 GeneratedCode += f"        else:\n"
                 GeneratedCode += f"            pass\n"
+                GeneratedCode += f"\n"
 
-                # Copy undeleted rows from current row to temp arrays
-                copyUndeletedRows(lineIndex)
+                # After all deletions, rebuild any indices that exist
+                clearAndRebuildIndices(currentTableStartLine, currentTableName)
 
-                # Delete all data from original columns in the table using a "del"
-                clearOriginalColumns(lineIndex)
-
-                # And add code to copy temp arrays back to global columns
-                addCopyBackCode(lineIndex)
-
-                if someIndexSeen:
-                    # Index over a handy (correct) column
-                    GeneratedCode += f"    for rowRef in range(len(_RowStatus)):\n"
-
-                    # Add code to correct the Ref values
-                    addCorrectIndexValueCode(lineIndex)
-
-                GeneratedCode += f"    return (len({currentTableName}_RowStatus))\n"
+                GeneratedCode += (
+                    f"    return (len({currentTableName}_RowStatus))\n"
+                )
 
             # At this level skip anything that's not a defineTable
+
+    return
 
 
 def generateTableDumpCode():
@@ -818,6 +769,7 @@ def generateTableDumpCode():
                 GeneratedCode += f"def {currentTableName}_DumpRows(rangeListToDump = None, outFile = sys.stdout):\n"
 
                 headerGenerated = False
+                generatedIndexCode = ""
 
             elif primaryKeyword == "defineColumn":
                 # If dumping the first column of the table generate a header with information about the table
@@ -828,35 +780,50 @@ def generateTableDumpCode():
                     GeneratedCode += "\n"
                     GeneratedCode += f"    print(f'**************', file = outFile)\n"
                     GeneratedCode += f"    print(f'**************', file = outFile)\n"
-                    GeneratedCode += f"    print('    Table %24s has %d entries' % ('{currentTableName}', len({currentTableName}_RowStatus)), file = outFile)\n"
+                    GeneratedCode += f"    print('    Table %s has %d entries' % ('{currentTableName}', len({currentTableName}_RowStatus)), file = outFile)\n"
                     GeneratedCode += f"    print(f'**************', file = outFile)\n"
                     GeneratedCode += f"    print(f'**************', file = outFile)\n"
                     GeneratedCode += f"    print(f'', file = outFile)\n"
                     GeneratedCode += "\n"
                     GeneratedCode += (
-                        f"    for i in range(0, len({currentTableName}_RowStatus)):\n"
+                        f"    for rowRef in range(0, len({currentTableName}_RowStatus)):\n"
                     )
-                    GeneratedCode += f"        if (rangeListToDump is None) or (i in rangeListToDump):\n"
-                    GeneratedCode += f"            print('    Row reference = %d' % (i), file = outFile)\n"
+                    GeneratedCode += f"        if (rangeListToDump is None) or (rowRef in rangeListToDump):\n"
+                    GeneratedCode += f"            print('    Row reference = %d' % (rowRef), file = outFile)\n"
 
                 # If an reference to another table
                 if elementName.endswith("_Ref"):
                     dummy, destTableName, dummy = elementName.split("_", 2)
-                    GeneratedCode += f"            print('    %30s = %10s  (%30s)' % ('{elementName}', {elementName}[i], {destTableName}_Name[{elementName}[i]]), file = outFile)\n"
+                    GeneratedCode += f"            print('    %30s = %10s  (%30s)' % ('{elementName}', {elementName}[rowRef], {destTableName}_Name[{elementName}[rowRef]]), file = outFile)\n"
 
                 else:
-                    GeneratedCode += f"            print('    %30s = %10s' % ('{elementName}', {elementName}[i]), file = outFile)\n"
+                    GeneratedCode += f"            print('    %30s = %10s' % ('{elementName}', {elementName}[rowRef]), file = outFile)\n"
 
             elif primaryKeyword == "defineIndex":
-                pass
+                fqDictName = elementName
+                fqColumnName = fqDictName[:-4]
+
+                generatedIndexCode += f"            if {fqDictName}[{fqColumnName}[rowRef]] != rowRef:\n"
+
+                generatedIndexCode += (
+                    f"                raise ValueError('Bad index value in {fqDictName}; value = ' + "
+                    f"str({fqColumnName}[rowRef]))\n"
+                )
+
+                generatedIndexCode += f"            else:\n"
+                generatedIndexCode += f"                print(f\"                    Good index value in {fqDictName}[{{{fqColumnName}[rowRef]!r}}]: {{rowRef}}\", file = outFile)\n"
 
             elif primaryKeyword == "endTable":
-                GeneratedCode += "\n"
+                # Add code that was generated above
+                GeneratedCode += generatedIndexCode
+                
                 GeneratedCode += f"            print('', file = outFile)\n"
                 GeneratedCode += "\n"
                 GeneratedCode += f"    return\n"
                 GeneratedCode += "\n"
                 currentTableName = None
+
+    return
 
 
 def generateTableWriteToFileCode():
@@ -978,10 +945,9 @@ for arg in sys.argv:
     if arg == "-q":
         quietMode = True
         commandLineArg = sys.argv[2]
-
-# Disable gratis print of Help
-# if not quietMode:
-#    print(Status)
+    if arg == "-h":
+        print ("\n./gDSCodeGen <.dd file with no extension> \n")
+        exit (1)
 
 # Get the datastore definition file name prefix
 datastoreNamePrefix = commandLineArg
