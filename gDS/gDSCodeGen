@@ -938,19 +938,18 @@ def generateTableReadFromFileCode():
 # Main: read .dd file, run validation passes, then generate .py
 # ---------------------------------------------------------------------------
 
-commandLineArg = sys.argv[1]
+lineLen = len(sys.argv)
 
-quietMode = False
-for arg in sys.argv:
-    if arg == "-q":
-        quietMode = True
-        commandLineArg = sys.argv[2]
-    if arg == "-h":
-        print ("\n./gDSCodeGen <.dd file with no extension> \n")
-        exit (1)
+# Take care of help
+if (lineLen == 1) or (sys.argv[1] in [ "-h", "-help", "--help"]):
+    print ("\n./gDSCodeGen <.dd filename with no extension> \n")
+    exit (1)
 
-# Get the datastore definition file name prefix
-datastoreNamePrefix = commandLineArg
+# Take care of "-q" (ignore it for now)
+if (sys.argv[1] == "-q"):
+    datastoreNamePrefix = sys.argv[2]
+else:
+    datastoreNamePrefix = sys.argv[1]
 
 if not os.path.exists(datastoreNamePrefix + ".dd"):
     print(f"{codeLine()}File {datastoreNamePrefix + '.dd'} does not exist")
