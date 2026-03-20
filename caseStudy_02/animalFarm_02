@@ -12,6 +12,7 @@
 
     There is help text just below *or* (./animalFarm_02 --help)
 
+    V0107 - 03/19/2026 22:00 - Fix verification UI
     V0106 - 03/14/2026 08:30 - Fix up/test write/read.
     V0105 - 02/14/2026 17:00 - Add write/read to file.
     V0104 - 11/05/2025 15:00 - More fixup for case study videos.
@@ -469,22 +470,24 @@ class UI:
         return
 
 
-    # Display calculated and observed values
-    def printCalculatedAndObserved():
+    # Return calculated and observed values
+    def returnCalculatedAndObserved():
     
         x = Color.RED
         y = Color.WHITE
+        
+        outString = ""
 
         MasterLock.lock()
     
-        gScreenLines[0] += (" \n")
-        gScreenLines[0] += (f" {x}{gTotalAnimalsCalculated[0]}{y} animals calculated; {x}{gTotalAnimalsObserved[0]}{y} animals observed \n")
-        gScreenLines[0] += (f" {x}{gTotalMilkCalculated[0]}{y} milk production calculated; {x}{gTotalMilkObserved[0]}{y} milk production observed \n")
-        gScreenLines[0] += (f" {x}{gTotalEggsCalculated[0]}{y} egg production calculated; {x}{gTotalEggsObserved[0]}{y} egg production observed \n")
+        outString += (" \n")
+        outString += (f" {x}{gTotalAnimalsCalculated[0]}{y} animals calculated; {x}{gTotalAnimalsObserved[0]}{y} animals observed \n")
+        outString += (f" {x}{gTotalMilkCalculated[0]}{y} milk production calculated; {x}{gTotalMilkObserved[0]}{y} milk production observed \n")
+        outString += (f" {x}{gTotalEggsCalculated[0]}{y} egg production calculated; {x}{gTotalEggsObserved[0]}{y} egg production observed \n")
        
         MasterLock.unlock()
 
-        return
+        return (outString)
       
       
     # Add "new" animal values to "total" farm values and zero animal values
@@ -524,12 +527,12 @@ class UI:
         print ("   2) Verify indices in gAnimal")
         for rowRef in range(len(gAnimal_RowStatus)):
             if gAnimal_Name2Ref[gAnimal_Name[rowRef]] != rowRef:
-                print (f"Bad gAnimal_Name2Ref reference at row {rowRef} of gAnimal_Name")
+                print (f"Bad gAnimal_Name2Ref reference at row {rowRef} of gAnimal_Name \n")
                 exit (1)
     
         for rowRef in range(len(gAnimal_RowStatus)):
             if gAnimal_Time2Ref[gAnimal_Time[rowRef]] != rowRef:
-                print (f"Bad gAnimal_Time2Ref reference at row {rowRef} of gAnimal_Time")
+                print (f"Bad gAnimal_Time2Ref reference at row {rowRef} of gAnimal_Time \n")
                 exit (1)
     
         # MUST update product totals (using possible erased animals) BEFORE compressing them away
@@ -544,25 +547,8 @@ class UI:
 
         print ("   6) Verify animal table index (counts then values)")
 
-        indexBad = False
-
-        nameCount = len(gAnimal_Name)
-        indexCount = len(gAnimal_Name2Ref)
         print ("")
-        print (f" Name count = {Color.RED}{nameCount}{Color.WHITE}; index count = {Color.RED}{indexCount}{Color.WHITE}")
-        if nameCount != indexCount:
-            indexBad = True
-        
-        for animalRef in range(len(gAnimal_RowStatus)):
-            if gAnimal_Name2Ref[gAnimal_Name[animalRef]] != animalRef:
-                indexBad = True
-                
-        if indexBad:
-            print ("")
-            print (f" {Color.CYAN}The index does not match the table!!!{Color.WHITE}")
-            exit(1)
-                
-        UI.printCalculatedAndObserved()
+        print (UI.returnCalculatedAndObserved())
 
         print ("")
         print (" Verify totals above!")
@@ -570,14 +556,12 @@ class UI:
            gTotalMilkCalculated[0] != gTotalMilkObserved[0] or \
            gTotalEggsCalculated[0] != gTotalEggsObserved[0]:
            
-            print (gScreenLines[0])
-
             print ("")
-            print (f" {Color.RED}The counts above don't match!!!{Color.WHITE}")
+            print (f" {Color.RED}The counts above don't match!!!{Color.WHITE} \n")
             exit (1)
             
         print ("")
-        print (f" {Color.GREEN}The counts above match!!!{Color.WHITE}")
+        print (f" {Color.GREEN}The counts above match!!!{Color.WHITE} \n")
                 
         return
 
@@ -804,9 +788,10 @@ class UI:
             
         gScreenLines[0] += (" \n")
         gScreenLines[0] += (" The 3 lines below are only accurate after ((up) and (ca)) or (va) operations! \n")
-        #  Update observed now because it's cheap
+        
+        #  Update observed now and print the values to be verified
         UI.updateObserved()
-        UI.printCalculatedAndObserved()
+        gScreenLines[0] += UI.returnCalculatedAndObserved()
             
         if not gBatchMode[0]:
         

@@ -1,9 +1,15 @@
 #!/usr/bin/python3
-"""gDSCodeGen: generate gDS (shared datastore) Python code from a .dd data-definition file."""
+#
+# gDSCodeGen: generate gDS (sharedmemory datastore) Python code from a .dd
+# data-definition file.
+#
+#   ./gDSCodeGen  <.dd filename with no extension>
+# 
 
 Status = """
 +++ - gDSCodeGen - Generate gDS code from a user-supplied data definition file.
 
+    V0110 - 03/19/2026 - Improve code with Cursor
     V0109 - 03/14/2026 - Fix indexing support.
     V0108 - 02/06/2026 - Add WriteToFile and ReadFromFile helper routines
     V0107 - 10/22/2025 16:00 - Add double underscore detection
@@ -72,71 +78,83 @@ def getNextLineToProcess(lineIndex):
     """
     Scan from lineIndex and return the next non-empty, non-comment line.
 
-    Strips comments (from # onward), splits on whitespace. Returns the new line
-    index, the first token (primary keyword), and the next two tokens (e.g.
-    element name, initial value). Missing tokens are Python None.
+    Strips comments (from # onward), then splits each line into at most
+    three fields:
+      1) primary keyword
+      2) element name
+      3) initial value (kept as the full remainder of the line)
+
+    Returns: (next_line_index, primary_keyword, element_name, initial_value).
+    Missing fields are returned as Python None.
     """
-    primaryKeyword = None
-    tokens = [None, None, None]
+    lineCount = len(LinesToProcess)
 
-    while primaryKeyword is None and lineIndex < len(LinesToProcess):
-        line = LinesToProcess[lineIndex]
-        if "#" in line:
-            line, _ = line.split("#", 1)
-        line = line.strip()
-
-        if line:
-            tokens = line.split()
-            tokens += [None, None, None]
-            primaryKeyword = tokens[0]
-
+    while lineIndex < lineCount:
+        # Remove inline comments and surrounding whitespace.
+        line = LinesToProcess[lineIndex].partition("#")[0].strip()
         lineIndex += 1
 
-    return (lineIndex, primaryKeyword, tokens[1], tokens[2])
+        # Skip blank/comment-only lines.
+        if not line:
+            continue
+
+        # Keep only three logical fields; field 3 preserves spaces.
+        fields = line.split(maxsplit=2)
+        fields += [None] * (3 - len(fields))
+        primaryKeyword, elementName, initialValue = fields
+        return (lineIndex, primaryKeyword, elementName, initialValue)
+
+    return (lineIndex, None, None, None)
 
 
 def verifyAllPrimaryKeywordsAreValid():
     """(Pass A) Ensure every primary keyword is one of the known .dd vocabulary."""
 
+    validKeywords = {
+        "defineTable",
+        "endTable",
+        "defineColumn",
+        "defineIndex",
+        "defineUnary",
+        "defineList",
+        "defineDict",
+    }
+    keywordsRequiringElementName = validKeywords - {"endTable"}
+
     lineIndex = 0
 
     while lineIndex < len(LinesToProcess):
 
-        lineIndex, primaryKeyword, elementName, dummy = getNextLineToProcess(lineIndex)
+        lineIndex, primaryKeyword, elementName, _ = getNextLineToProcess(lineIndex)
 
-        if primaryKeyword is not None:
+        if primaryKeyword is None:
+            continue
 
-            if primaryKeyword not in (
-                "defineTable",
-                "endTable",
-                "defineColumn",
-                "defineIndex",
-                "defineUnary",
-                "defineList",
-                "defineDict",
-            ):
-                print(
-                    f"{codeLine()}Keyword '{primaryKeyword}' not in vocabulary at line {lineIndex} of the input file"
-                )
-                exit(1)
+        if primaryKeyword not in validKeywords:
+            print(
+                f"{codeLine()}Keyword '{primaryKeyword}' not in vocabulary at line {lineIndex} of the input file"
+            )
+            exit(1)
 
-            else:
+        # Basic shape validation before keyword-specific checks.
+        if (primaryKeyword in keywordsRequiringElementName) and (elementName is None):
+            print(
+                f"{codeLine()}Keyword '{primaryKeyword}' missing required element name at line {lineIndex} of the input file"
+            )
+            exit(1)
 
-                if (primaryKeyword == "defineTable") and ("_" in elementName):
+        if (primaryKeyword == "defineTable") and ("_" in elementName):
+            print(
+                f"{codeLine()}A 'defineTable' was found with underscores in the table name at line {lineIndex} of the input file"
+            )
+            exit(1)
 
-                    print(
-                        f"{codeLine()}A 'defineTable' was found with underscores in the table name at line {lineIndex} of the input file"
-                    )
-                    exit(1)
-
-                # Look for 2 or more concatenated underscores in element name
-                if (primaryKeyword in ("defineColumn", "defineIndex")) and (
-                    "__" in elementName
-                ):
-                    print(
-                        f"{codeLine()}Concatenated underscores at line {lineIndex} of the input file"
-                    )
-                    exit(1)
+        # Look for 2 or more concatenated underscores in element name
+        if (primaryKeyword in ("defineColumn", "defineIndex")) and ("__" in elementName):
+            print(
+                f"{codeLine()}Concatenated underscores at line {lineIndex} of the input file"
+            )
+            exit(1)
 
     return
 
@@ -146,54 +164,63 @@ def verifyBeginEndInnerConsistency():
 
     global AllTableNames
 
+    # Keep pass behavior deterministic if this validator is ever re-run.
+    AllTableNames = []
+
     lineIndex = 0
 
     currentTableName = None
 
     while lineIndex < len(LinesToProcess):
 
-        lineIndex, primaryKeyword, elementName, dummy = getNextLineToProcess(lineIndex)
+        lineIndex, primaryKeyword, elementName, _ = getNextLineToProcess(lineIndex)
 
-        if primaryKeyword is not None:
+        if primaryKeyword is None:
+            continue
 
-            # -# Check defineTable / endTable match up correctly
-            if primaryKeyword == "defineTable":
-                # If out of sequence
-                if currentTableName is not None:
-                    print(
-                        f"{codeLine()}A 'defineTable' was found before the previous table definition ended at line {lineIndex} of the input file"
-                    )
-                    exit(1)
+        # -# Check defineTable / endTable match up correctly
+        if primaryKeyword == "defineTable":
+            # If out of sequence
+            if currentTableName is not None:
+                print(
+                    f"{codeLine()}A 'defineTable' was found before the previous table definition ended at line {lineIndex} of the input file"
+                )
+                exit(1)
 
-                # Set up to handle a new table definition
-                currentTableName = elementName
-                AllTableNames.append(currentTableName)
+            # Set up to handle a new table definition
+            currentTableName = elementName
+            AllTableNames.append(currentTableName)
 
-            elif primaryKeyword == "endTable":
-                # Wipe out current table definition
-                currentTableName = None
+        elif primaryKeyword == "endTable":
+            if currentTableName is None:
+                print(
+                    f"{codeLine()}An 'endTable' was found before a matching 'defineTable' at line {lineIndex} of the input file"
+                )
+                exit(1)
+            # Wipe out current table definition
+            currentTableName = None
 
-            # -# Check defineColumn / defineIndex are indeed inner
-            elif primaryKeyword in ("defineColumn", "defineIndex"):
-                if currentTableName is None:
-                    print(
-                        f"{codeLine()}Inner keywords found before 'defineTable' at line {lineIndex} of the input file"
-                    )
-                    exit(1)
+        # -# Check defineColumn / defineIndex are indeed inner
+        elif primaryKeyword in ("defineColumn", "defineIndex"):
+            if currentTableName is None:
+                print(
+                    f"{codeLine()}Inner keywords found before 'defineTable' at line {lineIndex} of the input file"
+                )
+                exit(1)
 
-                if not elementName.startswith(f"{currentTableName}_"):
-                    print(
-                        f"{codeLine()}Inner keywords do not start with current table name at line {lineIndex} of the input file"
-                    )
-                    exit(1)
+            if not elementName.startswith(f"{currentTableName}_"):
+                print(
+                    f"{codeLine()}Inner keywords do not start with current table name at line {lineIndex} of the input file"
+                )
+                exit(1)
 
-            # -# Check unary keywords are not inner
-            elif primaryKeyword in ("defineList", "defineDict", "defineUnary"):
-                if currentTableName is not None:
-                    print(
-                        f"{codeLine()}An invalid keyword was found inside the table definition at line {lineIndex} of the input file"
-                    )
-                    exit(1)
+        # -# Check unary keywords are not inner
+        elif primaryKeyword in ("defineList", "defineDict", "defineUnary"):
+            if currentTableName is not None:
+                print(
+                    f"{codeLine()}An invalid keyword was found inside the table definition at line {lineIndex} of the input file"
+                )
+                exit(1)
 
     if currentTableName is not None:
         print(
@@ -209,29 +236,33 @@ def verifyNoDuplicateElementNames():
 
     lineIndex = 0
 
-    uniqueElementNames = []
+    uniqueElementNames = set()
 
     # -# Verify element names are unique
     while lineIndex < len(LinesToProcess):
 
-        lineIndex, primaryKeyword, elementName, dummy = getNextLineToProcess(lineIndex)
+        lineIndex, primaryKeyword, elementName, _ = getNextLineToProcess(lineIndex)
 
-        if primaryKeyword is not None:
+        if primaryKeyword is None:
+            continue
 
-            if elementName in uniqueElementNames:
-                print(
-                    f"{codeLine()}Duplicate element name '{elementName}' defined at line {lineIndex} of the input file"
-                )
-                exit(1)
-            else:
-                # Only end table has no element names
-                if primaryKeyword != "endTable":
-                    if elementName.startswith("_") or elementName.endswith("_"):
-                        print(
-                            f"{codeLine()}Leading or trailing underscores are not allowed at line {lineIndex} of the input file"
-                        )
-                        exit(1)
-                    uniqueElementNames.append(elementName)
+        # Only endTable has no element name.
+        if primaryKeyword == "endTable":
+            continue
+
+        if elementName in uniqueElementNames:
+            print(
+                f"{codeLine()}Duplicate element name '{elementName}' defined at line {lineIndex} of the input file"
+            )
+            exit(1)
+
+        if elementName.startswith("_") or elementName.endswith("_"):
+            print(
+                f"{codeLine()}Leading or trailing underscores are not allowed at line {lineIndex} of the input file"
+            )
+            exit(1)
+
+        uniqueElementNames.add(elementName)
 
     return
 
@@ -246,25 +277,28 @@ def verifyLeadingTableNames():
     # -# Verify inner element names lead with table names
     while lineIndex < len(LinesToProcess):
 
-        lineIndex, primaryKeyword, elementName, dummy = getNextLineToProcess(lineIndex)
+        lineIndex, primaryKeyword, elementName, _ = getNextLineToProcess(lineIndex)
 
-        if primaryKeyword is not None:
+        if primaryKeyword is None:
+            continue
 
-            if primaryKeyword == "defineTable":
+        if primaryKeyword == "defineTable":
 
-                currentTableName = elementName
+            currentTableName = elementName
 
-            elif primaryKeyword == "endTable":
+        elif primaryKeyword == "endTable":
 
-                currentTableName = None
+            currentTableName = None
 
-            elif primaryKeyword in ("defineColumn", "defineIndex"):
+        elif primaryKeyword in ("defineColumn", "defineIndex"):
 
-                if not elementName.startswith(f"{currentTableName}_"):
-                    print(
-                        f"{codeLine()}Inner name does not start with table name at line {lineIndex} of the input file"
-                    )
-                    exit(1)
+            if currentTableName is None or not elementName.startswith(
+                f"{currentTableName}_"
+            ):
+                print(
+                    f"{codeLine()}Inner name does not start with table name at line {lineIndex} of the input file"
+                )
+                exit(1)
 
     return
 
@@ -281,30 +315,39 @@ def verifyRefColumns():
 
     while lineIndex < len(LinesToProcess):
 
-        lineIndex, primaryKeyword, elementName, dummy = getNextLineToProcess(lineIndex)
+        lineIndex, primaryKeyword, elementName, _ = getNextLineToProcess(lineIndex)
 
-        if primaryKeyword is not None:
+        if primaryKeyword is None:
+            continue
 
-            # -# Get the current table name
-            if primaryKeyword == "defineTable":
-                currentTableName = elementName
-            elif primaryKeyword == "endTable":
-                currentTableName = None
+        # -# Get the current table name
+        if primaryKeyword == "defineTable":
+            currentTableName = elementName
+            continue
+        elif primaryKeyword == "endTable":
+            currentTableName = None
+            continue
 
-            # -# Verify Ref is not to this table and is some other table
-            if primaryKeyword == "defineColumn":
-                if elementName.endswith("_Ref"):
-                    srcTable, destTable, dummy = elementName.split("_", 2)
-                    if destTable == currentTableName:
-                        print(
-                            f"{codeLine()}Reference column cites current table at line {lineIndex} of the input file"
-                        )
-                        exit(1)
-                    if destTable not in AllTableNames:
-                        print(
-                            f"{codeLine()}Reference column refers to a non-existent table at line {lineIndex} of the input file"
-                        )
-                        exit(1)
+        # -# Verify Ref is not to this table and is some other table
+        if primaryKeyword == "defineColumn" and elementName.endswith("_Ref"):
+            parts = elementName.split("_", 2)
+            if len(parts) != 3:
+                print(
+                    f"{codeLine()}Reference column '{elementName}' is mis-formatted at line {lineIndex} of the input file"
+                )
+                exit(1)
+
+            srcTable, destTable, _ = parts
+            if destTable == currentTableName:
+                print(
+                    f"{codeLine()}Reference column cites current table at line {lineIndex} of the input file"
+                )
+                exit(1)
+            if destTable not in AllTableNames:
+                print(
+                    f"{codeLine()}Reference column refers to a non-existent table at line {lineIndex} of the input file"
+                )
+                exit(1)
 
     return
 
@@ -314,48 +357,51 @@ def verifyIndices():
 
     # -# Verify an index refers to a column in the current table
     lineIndex = 0
+    currentTableColumnNames = []
+    currentTableColumnCitations = []
 
     while lineIndex < len(LinesToProcess):
 
-        lineIndex, primaryKeyword, elementName, dummy = getNextLineToProcess(lineIndex)
+        lineIndex, primaryKeyword, elementName, _ = getNextLineToProcess(lineIndex)
 
-        if primaryKeyword is not None:
+        if primaryKeyword is None:
+            continue
 
-            # -# For each table start, init local data
-            if primaryKeyword == "defineTable":
-                currentTableColumnNames = []
-                currentTableColumnCitations = []
+        # -# For each table start, init local data
+        if primaryKeyword == "defineTable":
+            currentTableColumnNames = []
+            currentTableColumnCitations = []
 
-            # -# Acquire list of non-ref column names for this table
-            elif primaryKeyword == "defineColumn":
-                # If not a _Ref column
-                if elementName.count("_") == 1:
-                    dummy, columnName = elementName.split("_", 1)
-                    currentTableColumnNames.append(columnName)
+        # -# Acquire list of non-ref column names for this table
+        elif primaryKeyword == "defineColumn":
+            # If not a _Ref column
+            if elementName.count("_") == 1:
+                _, columnName = elementName.split("_", 1)
+                currentTableColumnNames.append(columnName)
 
-            # -# Acquire list of index citations for this table
-            elif primaryKeyword == "defineIndex":
-                if elementName.count("_") != 1:
+        # -# Acquire list of index citations for this table
+        elif primaryKeyword == "defineIndex":
+            if elementName.count("_") != 1:
+                print(
+                    f"{codeLine()}Index column mis-formatted at line {lineIndex} of the input file"
+                )
+                exit(1)
+            tableName, indexCitation = elementName.split("_", 1)
+            if not indexCitation.endswith("2Ref"):
+                print(
+                    f"{codeLine()}Index specification does not end with '2Ref' at line {lineIndex} of the input file"
+                )
+                exit(1)
+            currentTableColumnCitations.append(indexCitation[:-4])
+
+        # -# At the end of the table check for invalid citations
+        elif primaryKeyword == "endTable":
+            for columnName in currentTableColumnCitations:
+                if columnName not in currentTableColumnNames:
                     print(
-                        f"{codeLine()}Index column mis-formatted at line {lineIndex} of the input file"
+                        f"{codeLine()}Index specification '{columnName}' doesn't appear in table definition at line {lineIndex} of the input file"
                     )
                     exit(1)
-                tableName, indexCitation = elementName.split("_", 1)
-                if not indexCitation.endswith("2Ref"):
-                    print(
-                        f"{codeLine()}Index specification does not end with '2Ref' at line {lineIndex} of the input file"
-                    )
-                    exit(1)
-                currentTableColumnCitations.append(indexCitation[:-4])
-
-            # -# At the end of the table check for invalid citations
-            elif primaryKeyword == "endTable":
-                for columnName in currentTableColumnCitations:
-                    if columnName not in currentTableColumnNames:
-                        print(
-                            f"{codeLine()}Index specification '{columnName}' doesn't appear in table definition at line {lineIndex} of the input file"
-                        )
-                        exit(1)
 
     return
 
@@ -365,45 +411,48 @@ def verifyRequiredColumnsExist():
 
     lineIndex = 0
     currentTableName = None
+    nameSeen = False
+    rowStatusLast = False
 
     while lineIndex < len(LinesToProcess):
 
-        lineIndex, primaryKeyword, elementName, dummy = getNextLineToProcess(lineIndex)
+        lineIndex, primaryKeyword, elementName, _ = getNextLineToProcess(lineIndex)
 
-        if primaryKeyword is not None:
+        if primaryKeyword is None:
+            continue
 
-            if primaryKeyword == "defineTable":
+        if primaryKeyword == "defineTable":
 
-                currentTableName = elementName
+            currentTableName = elementName
+            nameSeen = False
+            rowStatusLast = False
 
-                nameSeen = False
-                rowStatusLast = False
+        elif primaryKeyword == "defineColumn":
 
-            elif primaryKeyword == "defineColumn":
+            # Seeing another column means the previous one cannot be last.
+            rowStatusLast = False
 
-                rowStatusLast = False
+            if elementName == f"{currentTableName}_Name":
+                nameSeen = True
 
-                if elementName == f"{currentTableName}_Name":
-                    nameSeen = True
+            if elementName == f"{currentTableName}_RowStatus":
+                rowStatusLast = True
 
-                if elementName == f"{currentTableName}_RowStatus":
-                    rowStatusLast = True
+        elif primaryKeyword == "endTable":
 
-            elif primaryKeyword == "endTable":
+            if not nameSeen:
+                print(
+                    f"{codeLine()}Table '{currentTableName}' doesn't have a Name column at line {lineIndex} of the input file"
+                )
+                exit(1)
 
-                if not nameSeen:
-                    print(
-                        f"{codeLine()}Table '{currentTableName}' doesn't have a Name column at line {lineIndex} of the input file"
-                    )
-                    exit(1)
+            if not rowStatusLast:
+                print(
+                    f"{codeLine()}Table '{currentTableName}' doesn't have a RowStatus column LAST at line {lineIndex} of the input file"
+                )
+                exit(1)
 
-                if not rowStatusLast:
-                    print(
-                        f"{codeLine()}Table '{currentTableName}' doesn't have a RowStatus column LAST at line {lineIndex} of the input file"
-                    )
-                    exit(1)
-
-                currentTableName = None
+            currentTableName = None
 
     return
 
@@ -419,36 +468,14 @@ def verifyNoListDictInit():
             lineIndex
         )
 
-        if primaryKeyword is not None:
+        if primaryKeyword is None:
+            continue
 
-            if primaryKeyword in ("defineList", "defineDict"):
-                if initialValue is not None:
-                    print(
-                        f"{codeLine()}'defineList/Dict' can not have an initial value at line {lineIndex} of the input file"
-                    )
-                    exit(1)
-
-    return
-
-
-def verifyColumnUnaryHaveInits():
-    """(Pass I) Ensure every defineUnary has an initial value."""
-
-    lineIndex = 0
-
-    while lineIndex < len(LinesToProcess):
-
-        lineIndex, primaryKeyword, elementName, initialValue = getNextLineToProcess(
-            lineIndex
-        )
-
-        if primaryKeyword is not None:
-
-            if (primaryKeyword == "defineUnary") and (initialValue is None):
-                print(
-                    f"{codeLine()}'defineUnary' must have an initial value at line {lineIndex} of the input file"
-                )
-                exit(1)
+        if primaryKeyword in ("defineList", "defineDict") and (initialValue is not None):
+            print(
+                f"{codeLine()}'defineList/Dict' can not have an initial value at line {lineIndex} of the input file"
+            )
+            exit(1)
 
     return
 
@@ -468,6 +495,7 @@ def generateAllVariableDefinitions(datastoreNamePrefix):
     GeneratedCode += f"\n"
     GeneratedCode += f"# Start of gDS include file ...\n"
     GeneratedCode += f"\n"
+    GeneratedCode += f"import sys\n"
     GeneratedCode += f"from multiprocessing import Manager\n"
     GeneratedCode += f"import json\n"
     GeneratedCode += f"gDSMgr = Manager()\n"
@@ -984,9 +1012,6 @@ verifyRequiredColumnsExist()
 
 # -# (Pass H) Verify defineList / defineDict specify no initial values
 verifyNoListDictInit()
-
-# -# (Pass I) Verify all unaries have initial values
-verifyColumnUnaryHaveInits()
 
 # Generate code to declare all global shared lists and dictionaries
 # Unaries will be initialized here
