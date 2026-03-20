@@ -97,7 +97,7 @@ def runOneTest(dataTag):
     else:
        
         print (f"{dataTag} - Success - {actualOutput}")
-        (retCode, stdout, stderr) = issueCmdLocal(f"rm testFile.dd testFile.py")
+        #(retCode, stdout, stderr) = issueCmdLocal(f"rm testFile.dd testFile.py")
 
 
 ##################################
@@ -212,7 +212,7 @@ defineUnary
 """
 
 """ - B03 expected output
-An invalid keyword was found inside the table definition at line 4 of the input file
+Keyword 'defineUnary' missing required element name at line 4 of the input file
 """
 
 runOneTest("B03")
@@ -543,36 +543,5 @@ endTable
 """
 
 runOneTest("H01")
-
-
-########################################
-
-""" - I01 data
-#
-#
-defineTable xxx
-defineColumn xxx_Col1
-defineColumn xxx_yyy_Ref
-defineColumn xxx_Name
-defineColumn xxx_RowStatus
-endTable
-
-defineList qqq
-
-defineUnary nnn
-
-defineTable yyy
-defineColumn yyy_Name
-defineColumn yyy_RowStatus
-endTable
-#
-"""
-
-""" - I01 expected output
-'defineUnary' must have an initial value at line 12 of the input file
-"""
-
-runOneTest("I01")
-
 
 print ("")

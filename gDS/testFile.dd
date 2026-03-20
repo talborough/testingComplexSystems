@@ -1,0 +1,16 @@
+#
+#
+defineTable xxx
+defineColumn xxx_Col1
+defineColumn xxx_yyy_Ref
+defineColumn xxx_Name
+defineColumn xxx_RowStatus
+endTable
+
+defineList qqq 123
+
+defineTable yyy
+defineColumn yyy_Name
+defineColumn yyy_RowStatus
+endTable
+#
