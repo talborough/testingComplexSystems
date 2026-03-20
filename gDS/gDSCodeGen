@@ -507,35 +507,36 @@ def generateAllVariableDefinitions(datastoreNamePrefix):
             lineIndex
         )
 
-        if primaryKeyword is not None:
+        if primaryKeyword is None:
+            continue
 
-            if primaryKeyword == "defineTable":
-                GeneratedCode += f"\n"
-                GeneratedCode += f"#\n"
-                GeneratedCode += (
-                    f"# Define global shared variables for entity {elementName}\n"
-                )
-                GeneratedCode += f"#\n"
+        if primaryKeyword == "defineTable":
+            GeneratedCode += f"\n"
+            GeneratedCode += f"#\n"
+            GeneratedCode += (
+                f"# Define global shared variables for entity {elementName}\n"
+            )
+            GeneratedCode += f"#\n"
 
-            elif primaryKeyword == "defineColumn":
-                GeneratedCode += f"{elementName} = gDSMgr.list()\n"
+        elif primaryKeyword == "defineColumn":
+            GeneratedCode += f"{elementName} = gDSMgr.list()\n"
 
-            elif primaryKeyword == "defineUnary":
-                GeneratedCode += f"\n"
-                GeneratedCode += f"{elementName} = gDSMgr.list()\n"
-                GeneratedCode += f"{elementName}.append({initialValue})\n"
+        elif primaryKeyword == "defineUnary":
+            GeneratedCode += f"\n"
+            GeneratedCode += f"{elementName} = gDSMgr.list()\n"
+            GeneratedCode += f"{elementName}.append({initialValue})\n"
 
-            elif primaryKeyword == "defineIndex":
-                GeneratedCode += f"{elementName} = gDSMgr.dict()\n"
+        elif primaryKeyword == "defineIndex":
+            GeneratedCode += f"{elementName} = gDSMgr.dict()\n"
 
-            elif primaryKeyword == "defineList":
-                GeneratedCode += f"{elementName} = gDSMgr.list()\n"
+        elif primaryKeyword == "defineList":
+            GeneratedCode += f"{elementName} = gDSMgr.list()\n"
 
-            elif primaryKeyword == "defineDict":
-                GeneratedCode += f"{elementName} = gDSMgr.dict()\n"
+        elif primaryKeyword == "defineDict":
+            GeneratedCode += f"{elementName} = gDSMgr.dict()\n"
 
-            elif primaryKeyword == "endTable":
-                pass
+        elif primaryKeyword == "endTable":
+            pass
 
     return
 
@@ -618,55 +619,52 @@ def generateRowAddCode():
             lineIndex
         )
 
-        if primaryKeyword is not None:
+        if primaryKeyword is None:
+            continue
 
-            if primaryKeyword == "defineTable":
+        if primaryKeyword == "defineTable":
 
-                currentTableName = elementName
+            currentTableName = elementName
 
-                # So we can rewind to table start
-                currentTableStartLine = lineIndex
+            # So we can rewind to table start
+            currentTableStartLine = lineIndex
 
-                # Generate header
-                GeneratedCode += f"\n"
-                GeneratedCode += f"#\n"
-                GeneratedCode += f"# Add a row to table {elementName}\n"
-                GeneratedCode += f"#\n"
-                GeneratedCode += f"def {currentTableName}_AddARow(\\\n"
+            # Generate header
+            GeneratedCode += f"\n"
+            GeneratedCode += f"#\n"
+            GeneratedCode += f"# Add a row to table {elementName}\n"
+            GeneratedCode += f"#\n"
+            GeneratedCode += f"def {currentTableName}_AddARow(\\\n"
 
-                # Re-scan this table's definition generating required then optional dummy arguments
-                addRequiredDummyArgs(currentTableStartLine)
-                addOptionalDummyArgs(currentTableStartLine)
+            # Re-scan this table's definition generating required then optional dummy arguments
+            addRequiredDummyArgs(currentTableStartLine)
+            addOptionalDummyArgs(currentTableStartLine)
 
-                # Close out add-a-row header
-                GeneratedCode += f"):\n"
+            # Close out add-a-row header
+            GeneratedCode += f"):\n"
 
-                GeneratedCode += f"\n"
+            GeneratedCode += f"\n"
 
-            # Now create each column's append of data based on the defineColumn lines
-            elif primaryKeyword == "defineColumn":
-                # Pull table name off the front of the column name to make arg names
-                dummy, columnArgName = elementName.split("_", 1)
-                if columnArgName == "RowStatus":
-                    rowStatusColumnName = elementName
-                GeneratedCode += f"    {elementName}.append(_{columnArgName})\n"
+        # Now create each column's append of data based on the defineColumn lines
+        elif primaryKeyword == "defineColumn":
+            # Pull table name off the front of the column name to make arg names
+            dummy, columnArgName = elementName.split("_", 1)
+            if columnArgName == "RowStatus":
+                rowStatusColumnName = elementName
+            GeneratedCode += f"    {elementName}.append(_{columnArgName})\n"
 
-            # Add indices after the rest of the header table has been generated
-            elif primaryKeyword == "defineIndex":
+        # Add indices after the rest of the header table has been generated
+        elif primaryKeyword == "endTable":
 
-                pass
+            GeneratedCode += f"\n"
 
-            elif primaryKeyword == "endTable":
+            # Process any 'defineIndex' citations
+            addAllDefineIndexCode(currentTableStartLine)
 
-                GeneratedCode += f"\n"
+            # Generate return of current table length
+            GeneratedCode += f"    return (len({rowStatusColumnName}) - 1)\n"
 
-                # Process any 'defineIndex' citations
-                addAllDefineIndexCode(currentTableStartLine)
-
-                # Generate return of current table length
-                GeneratedCode += f"    return (len({rowStatusColumnName}) - 1)\n"
-
-                currentTableName = None
+            currentTableName = None
 
     return
 
@@ -733,41 +731,40 @@ def generateDeleteTableRowCode():
 
         lineIndex, primaryKeyword, elementName, _ = getNextLineToProcess(lineIndex)
 
-        if primaryKeyword is not None:
+        if primaryKeyword is None:
+            continue
 
-            if primaryKeyword == "defineTable":
+        if primaryKeyword == "defineTable":
 
-                currentTableName = elementName
-                currentTableStartLine = lineIndex
+            currentTableName = elementName
+            currentTableStartLine = lineIndex
 
-                GeneratedCode += f"\n"
-                GeneratedCode += f"#\n"
-                GeneratedCode += f"# Delete erased rows in table {elementName}\n"
-                GeneratedCode += f"#\n"
-                GeneratedCode += (
-                    f"def {currentTableName}_DeleteRows(rowStatusValueToDelete = '!All!'):\n"
-                )
-                GeneratedCode += f"\n"
-                GeneratedCode += (
-                    f"    for rowRef in range(len({currentTableName}_RowStatus) - 1, -1, -1):\n"
-                )
-                GeneratedCode += f"        if (rowStatusValueToDelete == '!All!') or ({currentTableName}_RowStatus[rowRef] == rowStatusValueToDelete):\n"
+            GeneratedCode += f"\n"
+            GeneratedCode += f"#\n"
+            GeneratedCode += f"# Delete erased rows in table {elementName}\n"
+            GeneratedCode += f"#\n"
+            GeneratedCode += (
+                f"def {currentTableName}_DeleteRows(rowStatusValueToDelete = '!All!'):\n"
+            )
+            GeneratedCode += f"\n"
+            GeneratedCode += (
+                f"    for rowRef in range(len({currentTableName}_RowStatus) - 1, -1, -1):\n"
+            )
+            GeneratedCode += f"        if (rowStatusValueToDelete == '!All!') or ({currentTableName}_RowStatus[rowRef] == rowStatusValueToDelete):\n"
 
-                # Delete this row from all column lists
-                deleteColumnsAtRowRef(currentTableStartLine)
+            # Delete this row from all column lists
+            deleteColumnsAtRowRef(currentTableStartLine)
 
-                GeneratedCode += f"        else:\n"
-                GeneratedCode += f"            pass\n"
-                GeneratedCode += f"\n"
+            GeneratedCode += f"        else:\n"
+            GeneratedCode += f"            pass\n"
+            GeneratedCode += f"\n"
 
-                # After all deletions, rebuild any indices that exist
-                clearAndRebuildIndices(currentTableStartLine, currentTableName)
+            # After all deletions, rebuild any indices that exist
+            clearAndRebuildIndices(currentTableStartLine, currentTableName)
 
-                GeneratedCode += (
-                    f"    return (len({currentTableName}_RowStatus))\n"
-                )
-
-            # At this level skip anything that's not a defineTable
+            GeneratedCode += (
+                f"    return (len({currentTableName}_RowStatus))\n"
+            )
 
     return
 
@@ -784,72 +781,73 @@ def generateTableDumpCode():
 
         lineIndex, primaryKeyword, elementName, arg1 = getNextLineToProcess(lineIndex)
 
-        if primaryKeyword is not None:
+        if primaryKeyword is None:
+            continue
 
-            if primaryKeyword == "defineTable":
+        if primaryKeyword == "defineTable":
 
-                currentTableName = elementName
+            currentTableName = elementName
 
-                GeneratedCode += f"\n"
-                GeneratedCode += f"#\n"
-                GeneratedCode += f"# Print values out for table '{currentTableName}'\n"
-                GeneratedCode += f"#\n"
-                GeneratedCode += f"def {currentTableName}_DumpRows(rangeListToDump = None, outFile = sys.stdout):\n"
+            GeneratedCode += f"\n"
+            GeneratedCode += f"#\n"
+            GeneratedCode += f"# Print values out for table '{currentTableName}'\n"
+            GeneratedCode += f"#\n"
+            GeneratedCode += f"def {currentTableName}_DumpRows(rangeListToDump = None, outFile = sys.stdout):\n"
 
-                headerGenerated = False
-                generatedIndexCode = ""
+            headerGenerated = False
+            generatedIndexCode = ""
 
-            elif primaryKeyword == "defineColumn":
-                # If dumping the first column of the table generate a header with information about the table
-                if not headerGenerated:
+        elif primaryKeyword == "defineColumn":
+            # If dumping the first column of the table generate a header with information about the table
+            if not headerGenerated:
 
-                    headerGenerated = True
+                headerGenerated = True
 
-                    GeneratedCode += "\n"
-                    GeneratedCode += f"    print(f'**************', file = outFile)\n"
-                    GeneratedCode += f"    print(f'**************', file = outFile)\n"
-                    GeneratedCode += f"    print('    Table %s has %d entries' % ('{currentTableName}', len({currentTableName}_RowStatus)), file = outFile)\n"
-                    GeneratedCode += f"    print(f'**************', file = outFile)\n"
-                    GeneratedCode += f"    print(f'**************', file = outFile)\n"
-                    GeneratedCode += f"    print(f'', file = outFile)\n"
-                    GeneratedCode += "\n"
-                    GeneratedCode += (
-                        f"    for rowRef in range(0, len({currentTableName}_RowStatus)):\n"
-                    )
-                    GeneratedCode += f"        if (rangeListToDump is None) or (rowRef in rangeListToDump):\n"
-                    GeneratedCode += f"            print('    Row reference = %d' % (rowRef), file = outFile)\n"
-
-                # If an reference to another table
-                if elementName.endswith("_Ref"):
-                    dummy, destTableName, dummy = elementName.split("_", 2)
-                    GeneratedCode += f"            print('    %30s = %10s  (%30s)' % ('{elementName}', {elementName}[rowRef], {destTableName}_Name[{elementName}[rowRef]]), file = outFile)\n"
-
-                else:
-                    GeneratedCode += f"            print('    %30s = %10s' % ('{elementName}', {elementName}[rowRef]), file = outFile)\n"
-
-            elif primaryKeyword == "defineIndex":
-                fqDictName = elementName
-                fqColumnName = fqDictName[:-4]
-
-                generatedIndexCode += f"            if {fqDictName}[{fqColumnName}[rowRef]] != rowRef:\n"
-
-                generatedIndexCode += (
-                    f"                raise ValueError('Bad index value in {fqDictName}; value = ' + "
-                    f"str({fqColumnName}[rowRef]))\n"
+                GeneratedCode += "\n"
+                GeneratedCode += f"    print(f'**************', file = outFile)\n"
+                GeneratedCode += f"    print(f'**************', file = outFile)\n"
+                GeneratedCode += f"    print('    Table %s has %d entries' % ('{currentTableName}', len({currentTableName}_RowStatus)), file = outFile)\n"
+                GeneratedCode += f"    print(f'**************', file = outFile)\n"
+                GeneratedCode += f"    print(f'**************', file = outFile)\n"
+                GeneratedCode += f"    print(f'', file = outFile)\n"
+                GeneratedCode += "\n"
+                GeneratedCode += (
+                    f"    for rowRef in range(0, len({currentTableName}_RowStatus)):\n"
                 )
+                GeneratedCode += f"        if (rangeListToDump is None) or (rowRef in rangeListToDump):\n"
+                GeneratedCode += f"            print('    Row reference = %d' % (rowRef), file = outFile)\n"
 
-                generatedIndexCode += f"            else:\n"
-                generatedIndexCode += f"                print(f\"                    Good index value in {fqDictName}[{{{fqColumnName}[rowRef]!r}}]: {{rowRef}}\", file = outFile)\n"
+            # If an reference to another table
+            if elementName.endswith("_Ref"):
+                dummy, destTableName, dummy = elementName.split("_", 2)
+                GeneratedCode += f"            print('    %30s = %10s  (%30s)' % ('{elementName}', {elementName}[rowRef], {destTableName}_Name[{elementName}[rowRef]]), file = outFile)\n"
 
-            elif primaryKeyword == "endTable":
-                # Add code that was generated above
-                GeneratedCode += generatedIndexCode
-                
-                GeneratedCode += f"            print('', file = outFile)\n"
-                GeneratedCode += "\n"
-                GeneratedCode += f"    return\n"
-                GeneratedCode += "\n"
-                currentTableName = None
+            else:
+                GeneratedCode += f"            print('    %30s = %10s' % ('{elementName}', {elementName}[rowRef]), file = outFile)\n"
+
+        elif primaryKeyword == "defineIndex":
+            fqDictName = elementName
+            fqColumnName = fqDictName[:-4]
+
+            generatedIndexCode += f"            if {fqDictName}[{fqColumnName}[rowRef]] != rowRef:\n"
+
+            generatedIndexCode += (
+                f"                raise ValueError('Bad index value in {fqDictName}; value = ' + "
+                f"str({fqColumnName}[rowRef]))\n"
+            )
+
+            generatedIndexCode += f"            else:\n"
+            generatedIndexCode += f"                print(f\"                    Good index value in {fqDictName}[{{{fqColumnName}[rowRef]!r}}]: {{rowRef}}\", file = outFile)\n"
+
+        elif primaryKeyword == "endTable":
+            # Add code that was generated above
+            GeneratedCode += generatedIndexCode
+            
+            GeneratedCode += f"            print('', file = outFile)\n"
+            GeneratedCode += "\n"
+            GeneratedCode += f"    return\n"
+            GeneratedCode += "\n"
+            currentTableName = None
 
     return
 
