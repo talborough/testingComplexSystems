@@ -444,7 +444,7 @@ class UI:
     # This (should) never be called with background tasks running!
     def compressAnimals():
   
-        gAnimal_DeleteRows(rowStatusValueToDelete = None)
+        gAnimal_DeleteRows(allRows = False, rowStatusValueToDelete = None)
 
         return
         
@@ -516,9 +516,9 @@ class UI:
         gFarm_WriteToFile("farm_table.json")
         gCounty_WriteToFile("county_table.json")
 
-        gAnimal_DeleteRows(rowStatusValueToDelete = '!All!')
-        gFarm_DeleteRows(rowStatusValueToDelete = '!All!')
-        gCounty_DeleteRows(rowStatusValueToDelete = '!All!')
+        gAnimal_DeleteRows(allRows = True)
+        gFarm_DeleteRows(allRows = True)
+        gCounty_DeleteRows(allRows = True)
 
         gAnimal_ReadFromFile("animal_table.json")
         gFarm_ReadFromFile("farm_table.json")

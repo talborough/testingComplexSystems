@@ -9,6 +9,7 @@
 Status = """
 +++ - gDSCodeGen - Generate gDS code from a user-supplied data definition file.
 
+    V0111 - 03/27/2026 - Improve DeleteRows/break it for its users
     V0110 - 03/19/2026 - Improve code with Cursor
     V0109 - 03/14/2026 - Fix indexing support.
     V0108 - 02/06/2026 - Add WriteToFile and ReadFromFile helper routines
@@ -741,16 +742,16 @@ def generateDeleteTableRowCode():
 
             GeneratedCode += f"\n"
             GeneratedCode += f"#\n"
-            GeneratedCode += f"# Delete erased rows in table {elementName}\n"
+            GeneratedCode += f"# Delete erased rows in table {elementName} per RowStatus or, all rows\n"
             GeneratedCode += f"#\n"
             GeneratedCode += (
-                f"def {currentTableName}_DeleteRows(rowStatusValueToDelete = '!All!'):\n"
+                f"def {currentTableName}_DeleteRows(allRows, rowStatusValueToDelete = None):\n"
             )
             GeneratedCode += f"\n"
             GeneratedCode += (
                 f"    for rowRef in range(len({currentTableName}_RowStatus) - 1, -1, -1):\n"
             )
-            GeneratedCode += f"        if (rowStatusValueToDelete == '!All!') or ({currentTableName}_RowStatus[rowRef] == rowStatusValueToDelete):\n"
+            GeneratedCode += f"        if (allRows) or ({currentTableName}_RowStatus[rowRef] == rowStatusValueToDelete):\n"
 
             # Delete this row from all column lists
             deleteColumnsAtRowRef(currentTableStartLine)
