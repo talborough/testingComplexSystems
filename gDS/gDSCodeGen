@@ -9,6 +9,7 @@
 Status = """
 +++ - gDSCodeGen - Generate gDS code from a user-supplied data definition file.
 
+    V0112 - 04/13/2026 - Remove selector from generated WriteToFile
     V0111 - 03/27/2026 - Improve DeleteRows/break it for its users
     V0110 - 03/19/2026 - Improve code with Cursor
     V0109 - 03/14/2026 - Fix indexing support.
@@ -873,29 +874,24 @@ def generateTableWriteToFileCode():
                 )
                 GeneratedCode += f"#\n"
                 GeneratedCode += (
-                    f"def {currentTableName}_WriteToFile(filePath, "
-                    f"rangeListToDump=None):\n"
+                    f"def {currentTableName}_WriteToFile(filePath):\n"
                 )
                 GeneratedCode += f"    rows = []\n"
                 GeneratedCode += (
                     f"    for i in range(len({currentTableName}_RowStatus)):\n"
                 )
-                GeneratedCode += (
-                    f"        if (rangeListToDump is None) or "
-                    f"(i in rangeListToDump):\n"
-                )
-                GeneratedCode += f"            row = {{}}\n"
+                GeneratedCode += f"        row = {{}}\n"
 
             elif primaryKeyword == "defineColumn":
                 GeneratedCode += (
-                    f"            row['{elementName}'] = {elementName}[i]\n"
+                    f"        row['{elementName}'] = {elementName}[i]\n"
                 )
 
             elif primaryKeyword == "defineIndex":
                 pass
 
             elif primaryKeyword == "endTable":
-                GeneratedCode += f"            rows.append(row)\n"
+                GeneratedCode += f"        rows.append(row)\n"
                 GeneratedCode += f"    with open(filePath, 'w') as f:\n"
                 GeneratedCode += f"        json.dump(rows, f, indent=2)\n"
                 GeneratedCode += f"    return\n"
