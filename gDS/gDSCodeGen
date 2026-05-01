@@ -9,6 +9,7 @@
 Status = """
 +++ - gDSCodeGen - Generate gDS code from a user-supplied data definition file.
 
+    V0113 - 04/26/2026 - Check for duplicate indices before insert of row
     V0112 - 04/13/2026 - Remove selector from generated WriteToFile
     V0111 - 03/27/2026 - Improve DeleteRows/break it for its users
     V0110 - 03/19/2026 - Improve code with Cursor
@@ -22,7 +23,7 @@ Status = """
     V0102 - 02/12/2024 11:11 - Support dumping to a file or the screen.
     V0101 - 01/22/2024 09:20 - Fix up for webinars. Change the name of the generated support routines.
     V0100 - 01/04/2024 06:45 - Initial version entry.
-    
+
     Plans:
     
 ---
@@ -544,7 +545,7 @@ def generateAllVariableDefinitions(datastoreNamePrefix):
 
 
 def generateRowAddCode():
-    """Emit code for each table's AddARow: append columns and update indices."""
+    """Emit AddARow: pre-check index keys, append non-RowStatus columns, set indices, append RowStatus."""
     global GeneratedCode
 
     def addRequiredDummyArgs(tableStartLine):
@@ -573,30 +574,50 @@ def generateRowAddCode():
                 GeneratedCode += f"    _{columnArgName} = {initialValue},\\\n"
         return
 
-    def addAllDefineIndexCode(tableStartLine):
-        """Emit code that updates index dicts when a new row is added; raises KeyError on duplicate key."""
+    def addDuplicateKeyChecksBeforeAppends(tableStartLine):
+        """
+        Emit code that checks index dicts for duplicate keys using AddARow
+        parameters only — before any column lists are modified.
+        """
+        global GeneratedCode
+        lineIdx, primaryKeyword = tableStartLine, ""
+        while primaryKeyword != "endTable":
+            lineIdx, primaryKeyword, fqDictName, _ = getNextLineToProcess(lineIdx)
+            if primaryKeyword == "defineIndex":
+                fqColumnName = fqDictName[:-4]
+                _, columnArgName = fqColumnName.split("_", 1)
+                GeneratedCode += f"    if _{columnArgName} in {fqDictName}:\n"
+                GeneratedCode += f"        print('')\n"
+                GeneratedCode += (
+                    f"        raise KeyError('Duplicate key in {fqDictName}; value = ' + str(_{columnArgName}))\n"
+                )
+                GeneratedCode += f"\n"
+        return
+
+    def getFirstNonRowStatusColumnFqName(tableStartLine):
+        """After non-RowStatus appends, len(this column) is the new row count."""
+        lineIdx, primaryKeyword = tableStartLine, ""
+        while primaryKeyword != "endTable":
+            lineIdx, primaryKeyword, elementName, _ = getNextLineToProcess(lineIdx)
+            if primaryKeyword == "defineColumn":
+                _, columnArgName = elementName.split("_", 1)
+                if columnArgName != "RowStatus":
+                    return elementName
+        return None
+
+    def addAllDefineIndexAssignments(tableStartLine):
+        """Set thisRef and index dicts after all non-RowStatus columns, before RowStatus append."""
         global GeneratedCode
         lineIdx, primaryKeyword = tableStartLine, ""
         thisRefEmitted = False
         while primaryKeyword != "endTable":
             lineIdx, primaryKeyword, fqDictName, _ = getNextLineToProcess(lineIdx)
             if primaryKeyword == "defineIndex":
-
                 fqColumnName = fqDictName[:-4]
-
-                # See if to-be-inserted column value is already in dictionary.
-                # Emit the 'thisRef' calculation only once per added row, even if
-                # multiple indices exist for the table.
                 if not thisRefEmitted:
-                    GeneratedCode += (
-                        f"    thisRef = len({currentTableName}_RowStatus) - 1\n\n"
-                    )
+                    refCol = getFirstNonRowStatusColumnFqName(tableStartLine)
+                    GeneratedCode += f"    thisRef = len({refCol}) - 1\n\n"
                     thisRefEmitted = True
-                GeneratedCode += f"    if {fqColumnName}[thisRef] in {fqDictName}:\n"
-                GeneratedCode += f"        print('')\n"
-                GeneratedCode += f"        raise KeyError('Duplicate key in {fqDictName}; value = ', {fqColumnName}[thisRef])\n"
-                GeneratedCode += f"        print('')\n"
-                GeneratedCode += f"\n"
                 GeneratedCode += (
                     f"    {fqDictName}[{fqColumnName}[thisRef]] = thisRef\n"
                 )
@@ -627,6 +648,7 @@ def generateRowAddCode():
         if primaryKeyword == "defineTable":
 
             currentTableName = elementName
+            rowStatusColumnName = None
 
             # So we can rewind to table start
             currentTableStartLine = lineIndex
@@ -647,23 +669,29 @@ def generateRowAddCode():
 
             GeneratedCode += f"\n"
 
-        # Now create each column's append of data based on the defineColumn lines
+            # Duplicate key checks use parameters only, before any list mutation.
+            addDuplicateKeyChecksBeforeAppends(currentTableStartLine)
+
+        # Create each column's append: non-RowStatus first, RowStatus after index updates
         elif primaryKeyword == "defineColumn":
             # Pull table name off the front of the column name to make arg names
             dummy, columnArgName = elementName.split("_", 1)
             if columnArgName == "RowStatus":
                 rowStatusColumnName = elementName
-            GeneratedCode += f"    {elementName}.append(_{columnArgName})\n"
+            else:
+                GeneratedCode += f"    {elementName}.append(_{columnArgName})\n"
 
-        # Add indices after the rest of the header table has been generated
+        # Index updates after non-RowStatus columns, then append RowStatus (Rule J)
         elif primaryKeyword == "endTable":
 
             GeneratedCode += f"\n"
 
-            # Process any 'defineIndex' citations
-            addAllDefineIndexCode(currentTableStartLine)
+            addAllDefineIndexAssignments(currentTableStartLine)
 
-            # Generate return of current table length
+            _, rsArg = rowStatusColumnName.split("_", 1)
+            GeneratedCode += f"    {rowStatusColumnName}.append(_{rsArg})\n"
+
+            GeneratedCode += f"\n"
             GeneratedCode += f"    return (len({rowStatusColumnName}) - 1)\n"
 
             currentTableName = None
@@ -822,7 +850,12 @@ def generateTableDumpCode():
             # If an reference to another table
             if elementName.endswith("_Ref"):
                 dummy, destTableName, dummy = elementName.split("_", 2)
-                GeneratedCode += f"            print('    %30s = %10s  (%30s)' % ('{elementName}', {elementName}[rowRef], {destTableName}_Name[{elementName}[rowRef]]), file = outFile)\n"
+                derefVar = f"_deref_{elementName}"
+                GeneratedCode += f"            {derefVar} = {elementName}[rowRef]\n"
+                GeneratedCode += f"            if {derefVar} is None:\n"
+                GeneratedCode += f"                print('    %30s = %10s  (%30s)' % ('{elementName}', 'None', 'None'), file = outFile)\n"
+                GeneratedCode += f"            else:\n"
+                GeneratedCode += f"                print('    %30s = %10s  (%30s)' % ('{elementName}', {derefVar}, {destTableName}_Name[{derefVar}]), file = outFile)\n"
 
             else:
                 GeneratedCode += f"            print('    %30s = %10s' % ('{elementName}', {elementName}[rowRef]), file = outFile)\n"
@@ -833,10 +866,7 @@ def generateTableDumpCode():
 
             generatedIndexCode += f"            if {fqDictName}[{fqColumnName}[rowRef]] != rowRef:\n"
 
-            generatedIndexCode += (
-                f"                raise ValueError('Bad index value in {fqDictName}; value = ' + "
-                f"str({fqColumnName}[rowRef]))\n"
-            )
+            generatedIndexCode += f"                raise ValueError('Bad index value in {fqDictName}; value = ' + str({fqColumnName}[rowRef]))\n"
 
             generatedIndexCode += f"            else:\n"
             generatedIndexCode += f"                print(f\"                    Good index value in {fqDictName}[{{{fqColumnName}[rowRef]!r}}]: {{rowRef}}\", file = outFile)\n"

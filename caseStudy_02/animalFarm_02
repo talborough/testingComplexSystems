@@ -12,6 +12,7 @@
 
     There is help text just below *or* (./animalFarm_02 --help)
 
+    V0108 - 04/30/2026 - Fix up UI color.
     V0107 - 03/19/2026 22:00 - Fix verification UI
     V0106 - 03/14/2026 08:30 - Fix up/test write/read.
     V0105 - 02/14/2026 17:00 - Add write/read to file.
@@ -378,7 +379,7 @@ class UI:
                 gScreenLines[0] += (f" {out} \n")
                 out = ""
                 
-        gScreenLines[0] += (f" {out} \n")
+        gScreenLines[0] += (f" {out} {Color.WHITE} \n")
         
         gScreenLines[0] += (" \n")
         gScreenLines[0] += (f" (c) = Cows; (x) = Chickens; Count of gAnimal_Name2Ref index entries = {len(gAnimal_Name2Ref)} \n")
