@@ -1,0 +1,35 @@
+#
+# gDSCompile schema — Just the dsTable and dsVariable tables.
+#
+#       gDSCompile gDSIr.dd
+#
+# (-O is turned on automatically; you do not need to pass -O.)
+#
+
+defineTable     dsTable
+defineName      dsTable_Name
+defineIndexOneRef dsTable_Name_2Ref     dsTable_Name
+defineManyRefs  dsTable_dsVariable_Refs dsVariable
+defineColumn    dsTable_Type
+defineColumn    dsTable_DefineLineNumber
+defineColumn    dsTable_DefineLineIndex
+defineColumn    dsTable_EndLineNumber
+defineColumn    dsTable_EndLineIndex
+defineRowStatus dsTable_RowStatus       None
+endTable
+
+defineTable     dsVariable
+defineName      dsVariable_Name
+defineIndexOneRef dsVariable_Name_2Ref  dsVariable_Name
+defineColumn    dsVariable_BareName     None
+defineOneRef    dsVariable_dsTable_Ref  dsTable
+defineColumn    dsVariable_Type
+defineColumn    dsVariable_OptionalValueCount
+defineColumn    dsVariable_OptionalValue1
+defineColumn    dsVariable_OptionalValue2
+defineColumn    dsVariable_OptionalValue3
+defineColumn    dsVariable_LineNumber
+defineColumn    dsVariable_LineIndex
+defineRowStatus dsVariable_RowStatus    None
+endTable
+

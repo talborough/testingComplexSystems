@@ -1,0 +1,2568 @@
+#!/usr/bin/python3
+#
+# gDSExer - Interactive exerciser for any gDS schema (need the .dd plus the generated .py).
+#           (Coded by Cursor 3.)
+#
+
+import argparse
+import difflib
+import glob
+import os
+import sys
+
+from gDSExerSchema import _SCHEMA_REQUIRED, load_exer_context
+
+_CTX = None
+_SCRIPT = None
+# Deferred ``rec`` after prerequisite playback (``filespec`` from original ``rec``).
+_REC_PENDING = None
+
+# table -> RAL from most recent (d)elete on that table
+SAVED_RALS = {}
+
+# apply_name values for ApplyRALTo routines completed for the current saved RAL(s)
+APPLY_RAL_COMPLETED = set()
+
+# Populated by _bind_context() from the loaded (.dd, .py) pair.
+DELETE_FNS = {}
+WRITE_FNS = {}
+DUMP_FNS = {}
+ADD_FNS = {}
+REF_ROUTINES = []
+ADJUST_TARGETS = []
+DISPLAY_TABLE_ORDER = ()
+TABLE_NAME_WIDTH = 15
+DISPLAY_SPECS = {}
+REF_COLUMN_DEST_TABLE = {}
+SCHEMA_COLUMN_DEFAULTS = {}
+ADDAROW_PARAMS = {}
+
+_DEFAULT_PROMPT_LEGEND = ""
+_DEFAULTS_LEGEND_PRINTED = False
+
+
+def _bind_context(ctx):
+    """Wire module-level tables/routines from a loaded GDSExerContext."""
+    global _CTX, DELETE_FNS, WRITE_FNS, DUMP_FNS, ADD_FNS
+    global REF_ROUTINES, ADJUST_TARGETS, DISPLAY_TABLE_ORDER, DISPLAY_SPECS, REF_COLUMN_DEST_TABLE
+    global SCHEMA_COLUMN_DEFAULTS, ADDAROW_PARAMS, _DEFAULT_PROMPT_LEGEND
+    _CTX = ctx
+    DELETE_FNS = ctx.delete_fns
+    WRITE_FNS = ctx.write_fns
+    DUMP_FNS = ctx.dump_fns
+    ADD_FNS = ctx.add_fns
+    REF_ROUTINES = ctx.ref_routines
+    ADJUST_TARGETS = ctx.adjust_targets
+    DISPLAY_TABLE_ORDER = ctx.display_table_order
+    DISPLAY_SPECS = ctx.display_specs
+    REF_COLUMN_DEST_TABLE = ctx.ref_column_dest_table
+    SCHEMA_COLUMN_DEFAULTS = ctx.schema_column_defaults
+    ADDAROW_PARAMS = ctx.addarow_params
+    _DEFAULT_PROMPT_LEGEND = (
+        f"How to read prompts:\n"
+        f"  [schema: …]  default from {ctx.schema_stem}.dd / AddARow\n"
+        f"  [exer: …]    default from gDSExer only (not in the .dd file)\n"
+        f"  …: required  you must enter a value; type !!! to abort the command\n"
+        f"  (empty line) accept the default shown in brackets"
+    )
+    _print_ordinary_containers_notice_once()
+
+
+DELETE_MODE_CHOICES = (
+    ("allRows", "delete all rows"),
+    ("rowStatusValueToDelete", "delete by RowStatus value"),
+    ("rowReferencesToDelete", "delete by row ref list"),
+)
+
+DELETE_MODE_ALIASES = {
+    "1": "allRows",
+    "all": "allRows",
+    "allrows": "allRows",
+    "2": "rowStatusValueToDelete",
+    "rowstatus": "rowStatusValueToDelete",
+    "rowstatusvaluetodelete": "rowStatusValueToDelete",
+    "3": "rowReferencesToDelete",
+    "rowrefs": "rowReferencesToDelete",
+    "rowreferencestodelete": "rowReferencesToDelete",
+    "refs": "rowReferencesToDelete",
+}
+
+RAL_CHOICE_CHOICES = (
+    ("saved", "use RAL saved by (D)elete"),
+    ("build", "run DeleteRows to build a new RAL"),
+)
+
+RAL_CHOICE_ALIASES = {
+    "1": "saved",
+    "saved": "saved",
+    "": "saved",
+    "2": "build",
+    "build": "build",
+}
+
+DELETE_ACTION_CHOICES = (
+    ("deleteRow", "delete referencing rows"),
+    ("setRefToNone", "set referencing refs to None"),
+)
+
+DELETE_ACTION_ALIASES = {
+    "1": "deleteRow",
+    "setrefstonone": "setRefToNone",
+    "set to none": "setRefToNone",
+    "none": "setRefToNone",
+    "2": "setRefToNone",
+    "deleterow": "deleteRow",
+    "delete": "deleteRow",
+}
+
+_COMMAND_USAGE = (
+    "Use: add, delete, dump, rowstatus, apply, adjust, s/d, "
+    "rec, play, return, or quit \n"
+    "(Shortcuts a, d, u, sr, p, j, q)."
+)
+
+ADJUST_MANY_ACTION_CHOICES = (
+    ("add", "add a reference"),
+    ("remove", "remove a reference"),
+)
+
+ADJUST_MANY_ACTION_ALIASES = {
+    "1": "add",
+    "add": "add",
+    "2": "remove",
+    "remove": "remove",
+}
+
+MAIN_COMMAND_PROMPT = "Enter a command from the above list: "
+
+_MAIN_MENU_LINES = (
+    "(A)dd    (D)elete  - AddRow/DeleteRows in one table ",
+    "a(P)ply  ad(J)ust  - ApplyRALTo / adjust ref columns directly ",
+    "rec  play  return  - Record / play a .scr; return pops one nesting level ",
+    "S/D                - (save/diff) save gold while recording; diff vs gold on playback ",
+    "(SR) d(U)mp (Q)uit - Set RowStatus on a row; (D)ump - DumpRows for one table; (Q)uit",
+)
+
+_COMMAND_CANCEL = "!!!"
+_COMMAND_CANCEL_DISPLAY = f"{_COMMAND_CANCEL} - to abort"
+
+
+class CommandCancelled(Exception):
+    """User entered ``!!!`` to abort the current multi-step command."""
+
+
+def _is_command_cancel(text):
+    return text.strip() == _COMMAND_CANCEL
+
+
+def _raise_if_command_cancel(text):
+    if _is_command_cancel(text):
+        _discard_script_input()
+        raise CommandCancelled()
+
+
+def _print_command_usage():
+    _outcome_summary(_COMMAND_USAGE, file=sys.stderr)
+
+
+class _TeeStream:
+    """Forward writes to *stream* and mirror them to *on_write* (for session recording)."""
+
+    def __init__(self, stream, on_write):
+        self._stream = stream
+        self._on_write = on_write
+
+    def write(self, s):
+        if not s:
+            return 0
+        self._stream.write(s)
+        self._on_write(s)
+        return len(s)
+
+    def flush(self):
+        self._stream.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+class _ScriptFrame:
+    """One nested record or playback level on the script stack."""
+
+    __slots__ = (
+        "kind",
+        "path",
+        "record_file",
+        "playback_lines",
+        "playback_idx",
+        "is_gold_owner",
+        "gold_op_counter",
+        "record_next_line_no",
+    )
+
+    def __init__(
+        self,
+        kind,
+        path,
+        *,
+        record_file=None,
+        playback_lines=None,
+        is_gold_owner=False,
+    ):
+        self.kind = kind
+        self.path = path
+        self.record_file = record_file
+        self.playback_lines = playback_lines or []
+        self.playback_idx = 0
+        self.is_gold_owner = is_gold_owner
+        self.gold_op_counter = 0 if is_gold_owner else None
+        self.record_next_line_no = 1
+
+
+class ScriptIO:
+    """Record or playback readable gDSExer input scripts (stacked nesting)."""
+
+    def __init__(self):
+        self._stack = []
+        self.last_read_from_playback = False
+        self._pending_record = None
+        self._suppress_output_record = False
+        self._record_output_partial = ""
+        self._record_tee_installed = False
+        self._orig_stdout = None
+        self._orig_stderr = None
+        self._record_buffer = None
+        self._record_buffer_line_count = 0
+
+    def begin_record_command_buffer(self):
+        """Hold script lines until ``commit_record_command_buffer``."""
+        if self._record_buffer is not None:
+            return
+        self._record_buffer = []
+        self._record_buffer_line_count = 0
+
+    def commit_record_command_buffer(self):
+        """Append buffered script lines to the open record file."""
+        if self._record_buffer is None:
+            return
+        self._flush_record_output()
+        record = self._record_frame()
+        if record is None or record.record_file is None or not self._record_buffer:
+            self.discard_record_command_buffer()
+            return
+        for text in self._record_buffer:
+            record.record_file.write(text)
+        record.record_file.flush()
+        record.record_next_line_no += self._record_buffer_line_count
+        self.discard_record_command_buffer()
+
+    def discard_record_command_buffer(self):
+        """Drop buffered script lines for a failed or cancelled command."""
+        self._record_buffer = None
+        self._record_buffer_line_count = 0
+        self._pending_record = None
+        self._record_output_partial = ""
+
+    def _recording_out_deferred(self):
+        """True while recording but no command buffer is open yet."""
+        return self._record_frame() is not None and self._record_buffer is None
+
+    def _append_to_record(self, record, text, *, line_count=None):
+        """Write *text* to the record file or the active command buffer."""
+        if line_count is None:
+            line_count = text.count("\n")
+        if self._record_buffer is not None:
+            self._record_buffer.append(text)
+            self._record_buffer_line_count += line_count
+            return
+        if self._recording_out_deferred():
+            return
+        if record is None or record.record_file is None:
+            return
+        record.record_file.write(text)
+        record.record_file.flush()
+        record.record_next_line_no += line_count
+
+    @staticmethod
+    def _load_script(path):
+        """Load script answers as ``(text, source_line_no)``; line numbers include blanks."""
+        entries = []
+        with open(path, encoding="utf-8") as fh:
+            for line_no, raw in enumerate(fh, start=1):
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                entries.append((line, line_no))
+        return entries
+
+    @staticmethod
+    def _format_prompt(prompt):
+        prompt = prompt.rstrip()
+        if prompt.endswith("?"):
+            prompt = prompt[:-1].rstrip()
+        if not prompt.endswith(": "):
+            if prompt.endswith(":"):
+                prompt += " "
+            else:
+                prompt += ": "
+        return prompt
+
+    @staticmethod
+    def _comment_from_prompt(prompt):
+        text = prompt.strip().lstrip("\n")
+        if text.endswith(":"):
+            text = text[:-1].rstrip()
+        if text.endswith("?"):
+            text = text[:-1].rstrip()
+        return text or "input"
+
+    @staticmethod
+    def _is_main_command_prompt(prompt):
+        return "Enter a command from the above list" in prompt
+
+    def _write_record_entry(self, record, comment, answer):
+        """Append a comment/answer pair (no preceding ``# PROMPT:`` line)."""
+        comment_line = f"# {comment}\n"
+        answer_line = f"{answer}\n\n"
+        line_count = comment_line.count("\n") + answer_line.count("\n")
+        self._append_to_record(record, comment_line + answer_line, line_count=line_count)
+
+    def _write_record_answer(self, record, answer):
+        """Append one response after a preceding ``# PROMPT:`` line."""
+        answer_line = f"{answer}\n\n"
+        self._append_to_record(record, answer_line, line_count=answer_line.count("\n"))
+
+    def _write_record_output_line(self, record, line):
+        text = f"# OUT: {line}\n"
+        self._append_to_record(record, text, line_count=1)
+
+    def _record_prompt_line(self, prompt):
+        """Write the prompt text shown to the user (recording only)."""
+        record = self._record_frame()
+        if record is None or record.record_file is None:
+            if self._record_buffer is None:
+                return
+        line = f"# PROMPT: {prompt.rstrip()}\n"
+        self._append_to_record(record, line, line_count=line.count("\n"))
+
+    def record_output(self, text):
+        """Mirror terminal output into the open record script as ``# OUT:`` lines."""
+        if self._suppress_output_record or not text:
+            return
+        if self._recording_out_deferred():
+            return
+        record = self._record_frame()
+        if record is None or record.record_file is None:
+            return
+        self._record_output_partial += text
+        while "\n" in self._record_output_partial:
+            line, self._record_output_partial = self._record_output_partial.split(
+                "\n", 1
+            )
+            self._write_record_output_line(record, line)
+        if self._record_buffer is None:
+            record.record_file.flush()
+
+    def _flush_record_output(self):
+        if not self._record_output_partial:
+            return
+        if self._recording_out_deferred():
+            self._record_output_partial = ""
+            return
+        record = self._record_frame()
+        if record is None or record.record_file is None:
+            self._record_output_partial = ""
+            return
+        self._write_record_output_line(record, self._record_output_partial)
+        self._record_output_partial = ""
+        if self._record_buffer is None:
+            record.record_file.flush()
+
+    def _install_record_tee(self):
+        if self._record_tee_installed or self._record_frame() is None:
+            return
+
+        def on_write(chunk):
+            self.record_output(chunk)
+
+        self._orig_stdout = sys.stdout
+        self._orig_stderr = sys.stderr
+        sys.stdout = _TeeStream(sys.stdout, on_write)
+        sys.stderr = _TeeStream(sys.stderr, on_write)
+        self._record_tee_installed = True
+
+    def _remove_record_tee(self):
+        if not self._record_tee_installed:
+            return
+        self._flush_record_output()
+        sys.stdout = self._orig_stdout
+        sys.stderr = self._orig_stderr
+        self._orig_stdout = None
+        self._orig_stderr = None
+        self._record_tee_installed = False
+        self._record_output_partial = ""
+
+    def session_status_lines(self):
+        """``RECORD: …`` / ``PLAYBACK: …`` for active script stack levels."""
+        lines = []
+        record = self._record_frame()
+        if record is not None:
+            lines.append(
+                f"RECORD: {record.path!r} line {record.record_next_line_no}"
+            )
+        play = self._play_frame()
+        if play is not None:
+            lines.append(f"PLAYBACK: {play.path!r}")
+        return lines
+
+    def _playback_line_label(self, line_number):
+        """Script path and source line for playback echo."""
+        play = self._play_frame()
+        path = play.path if play else "script"
+        return f"PLAYBACK {path!r}:{line_number}"
+
+    def _record_frame(self):
+        for frame in reversed(self._stack):
+            if frame.kind == "record":
+                return frame
+        return None
+
+    def _play_frame(self):
+        for frame in reversed(self._stack):
+            if frame.kind == "play":
+                return frame
+        return None
+
+    def _gold_frame(self):
+        for frame in self._stack:
+            if frame.is_gold_owner:
+                return frame
+        return None
+
+    @property
+    def record_path(self):
+        frame = self._record_frame()
+        return frame.path if frame else None
+
+    @property
+    def playback_path(self):
+        frame = self._play_frame()
+        return frame.path if frame else None
+
+    @property
+    def active_script_path(self):
+        """Outermost script path (gold owner) for save/diff slot numbering."""
+        frame = self._gold_frame()
+        return frame.path if frame else None
+
+    def end_playback(self):
+        """Pop the innermost playback level."""
+        play = self._play_frame()
+        if play is None:
+            return None
+        return self.pop_level()[1]
+
+    def is_recording(self):
+        return self._record_frame() is not None
+
+    def begin_playback(self, playback_path):
+        """Push a playback level; nest under an active record or playback script."""
+        path = self._resolve_script_filespec(playback_path)
+        nested = bool(self._stack)
+        frame = _ScriptFrame(
+            "play",
+            path,
+            playback_lines=self._load_script(path),
+            is_gold_owner=not nested,
+        )
+        self._stack.append(frame)
+        self.last_read_from_playback = False
+        return path
+
+    @staticmethod
+    def _normalize_script_filespec(filespec):
+        """Return a script path with ``.scr`` appended when the filespec omits it."""
+        path = filespec.strip()
+        if not path:
+            raise ValueError("Script path required")
+        if not os.path.isabs(path):
+            path = os.path.normpath(os.path.join(os.getcwd(), path))
+        if not path.endswith(".scr"):
+            path += ".scr"
+        return path
+
+    @staticmethod
+    def _resolve_script_filespec(filespec):
+        """Resolve *filespec* to an existing ``.scr`` file."""
+        path = ScriptIO._normalize_script_filespec(filespec)
+        if not os.path.isfile(path):
+            raise ValueError(f"Script file not found: {filespec!r}")
+        return path
+
+    def begin_recording(self, record_path):
+        """Open *record_path* for script recording (interactive level only).
+
+        Returns ``new``, ``overwrite``, or ``append``; ``None`` if cancelled.
+        """
+        if self._stack:
+            return None
+        mode = _prompt_script_record_mode(record_path)
+        if mode is None:
+            return None
+        if mode in ("new", "overwrite"):
+            record_file = open(record_path, "w", encoding="utf-8")
+            header = "# gDSExer script (prompts, responses, and terminal output)\n\n"
+            record_file.write(header)
+            next_line_no = header.count("\n") + 1
+        else:
+            with open(record_path, "rb") as fh:
+                data = fh.read()
+            with open(record_path, "r", encoding="utf-8") as fh:
+                next_line_no = sum(1 for _ in fh) + 1
+            record_file = open(record_path, "a", encoding="utf-8")
+            if data:
+                if not data.endswith(b"\n"):
+                    record_file.write("\n")
+                    next_line_no += 1
+                record_file.write("\n")
+                next_line_no += 1
+        frame = _ScriptFrame(
+            "record",
+            record_path,
+            record_file=record_file,
+            is_gold_owner=True,
+        )
+        frame.record_next_line_no = next_line_no
+        self._stack.append(frame)
+        self._install_record_tee()
+        return mode
+
+    def pop_level(self):
+        """Pop one stack level; return ``(kind, path)`` or ``(None, None)``."""
+        if not self._stack:
+            return None, None
+        frame = self._stack.pop()
+        if frame.kind == "record":
+            self._remove_record_tee()
+        if frame.record_file is not None:
+            frame.record_file.close()
+        self._pending_record = None
+        self.last_read_from_playback = False
+        return frame.kind, frame.path
+
+    def _set_pending_record(self, prompt, line, normalizer):
+        """Hold one prompt/response until validation commits it to the script."""
+        if self._record_frame() is None:
+            self._pending_record = None
+            return
+        if self._is_main_command_prompt(prompt) and not line:
+            self._pending_record = None
+            return
+        self._pending_record = (prompt, line, normalizer)
+
+    def commit_pending_record(self):
+        """Write the pending prompt/response to the open record script."""
+        if self._pending_record is None or self.last_read_from_playback:
+            self._pending_record = None
+            return
+        record = self._record_frame()
+        if (
+            self._record_buffer is None
+            and (record is None or record.record_file is None)
+        ):
+            self._pending_record = None
+            return
+        _prompt, line, normalizer = self._pending_record
+        recorded = normalizer(line) if normalizer else line
+        if recorded == "":
+            recorded = "None"
+        self._write_record_answer(record, recorded)
+        self._pending_record = None
+
+    def read(self, prompt, normalizer=None):
+        prompt = self._format_prompt(prompt)
+        self.last_read_from_playback = False
+        main_command = self._is_main_command_prompt(prompt)
+        recording = self._record_frame() is not None and self._play_frame() is None
+        defer_main_record = recording and main_command
+        if recording and not defer_main_record:
+            self._record_prompt_line(prompt)
+        play = self._play_frame()
+        if play is not None:
+            if play.playback_idx >= len(play.playback_lines):
+                if self._is_main_command_prompt(prompt):
+                    ended = play.path
+                    self.end_playback()
+                    if self._play_frame() is not None:
+                        return self.read(prompt, normalizer)
+                    if not self._stack:
+                        print(f"Playback ended ({ended!r}).")
+                        print()
+                    _print_main_command_prompt_context()
+                    self._suppress_output_record = True
+                    try:
+                        line = input(prompt).strip()
+                    finally:
+                        self._suppress_output_record = False
+                else:
+                    prompt_label = self._comment_from_prompt(prompt)
+                    raise EOFError(
+                        f"Script ended unexpectedly at prompt {prompt_label!r}."
+                    )
+            else:
+                if self._is_main_command_prompt(prompt):
+                    _print_main_command_prompt_context()
+                line, source_line = play.playback_lines[play.playback_idx]
+                play.playback_idx += 1
+                self.last_read_from_playback = True
+                print(
+                    f"{self._playback_line_label(source_line)} "
+                    f"{prompt.lstrip()}{line}"
+                )
+        else:
+            self._suppress_output_record = True
+            try:
+                line = input(prompt).strip()
+            finally:
+                self._suppress_output_record = False
+
+        if defer_main_record and line.strip():
+            self.begin_record_command_buffer()
+            self._record_prompt_line(prompt)
+
+        self._set_pending_record(prompt, line, normalizer)
+        return line
+
+    def close(self):
+        self._remove_record_tee()
+        while self._stack:
+            frame = self._stack.pop()
+            if frame.record_file is not None:
+                frame.record_file.close()
+
+
+def _normalize_command_recording(word):
+    return _normalize_command(word) or word
+
+
+def _recordable_script_filespec(path):
+    """Prefer a basename (with ``.scr``) when the script lives in the current directory."""
+    path = ScriptIO._normalize_script_filespec(path)
+    path = os.path.normpath(os.path.abspath(path))
+    if os.path.dirname(path) == os.getcwd():
+        return os.path.basename(path)
+    return path
+
+
+def _normalize_script_filespec_recording(word):
+    scripts = _list_script_files()
+    path = _resolve_script_choice(word, scripts)
+    if path:
+        return _recordable_script_filespec(path)
+    try:
+        return _recordable_script_filespec(word)
+    except ValueError:
+        return word
+
+
+def _record_script_filespec_line(path, comment):
+    """Append a filespec answer after inline ``play`` / ``rec`` during recording."""
+    if _SCRIPT is None:
+        return
+    record = _SCRIPT._record_frame()
+    if (
+        _SCRIPT._record_buffer is None
+        and (record is None or record.record_file is None)
+    ):
+        return
+    _SCRIPT._write_record_entry(record, comment, _recordable_script_filespec(path))
+
+
+def _normalize_table_recording(word):
+    table = _parse_table_name(word)
+    return table if table else word
+
+
+def _normalize_apply_recording(word):
+    spec = _parse_apply_routine(word)
+    return spec[0] if spec else word
+
+
+def _normalize_adjust_target_recording(word):
+    target = _parse_adjust_target(word)
+    return target.col_var if target else word
+
+
+def _normalize_adjust_many_action_recording(word):
+    action = _parse_choice_from_menu(
+        word, ADJUST_MANY_ACTION_CHOICES, ADJUST_MANY_ACTION_ALIASES
+    )
+    return action if action else word
+
+
+def _normalize_delete_mode_recording(word):
+    mode = _parse_delete_mode(word)
+    return mode if mode else word
+
+
+def _normalize_ral_choice_recording(word):
+    choice = _parse_ral_choice(word)
+    return choice if choice else word
+
+
+def _normalize_delete_action_recording(word):
+    action = _parse_delete_action(word)
+    return action if action else word
+
+
+def _parse_menu_index(word, count):
+    """Parse a 1-based menu index; return 0-based index or ``None``."""
+    word = word.strip()
+    if not word:
+        return None
+    try:
+        idx = int(word) - 1
+    except ValueError:
+        return None
+    if 0 <= idx < count:
+        return idx
+    return None
+
+
+def _display_numbered_choices(title, choices):
+    _consume_post_command_blank()
+    print(title)
+    print("")
+    for i, (key, detail) in enumerate(choices, start=1):
+        print(f"  {i} - {key}  ({detail})")
+    print()
+
+
+def _print_defaults_legend_once():
+    global _DEFAULTS_LEGEND_PRINTED
+    if not _DEFAULTS_LEGEND_PRINTED:
+        print()
+        print(_DEFAULT_PROMPT_LEGEND)
+        _DEFAULTS_LEGEND_PRINTED = True
+
+
+def _print_ordinary_containers_notice_once():
+    """After .py scan: note when storage uses ordinary [] / {} (-O compile)."""
+    if _CTX is not None and _CTX.ordinary_containers:
+        print("")
+        print(
+            "The schema was compiled with -O: it defines ordinary [] and {} structures "
+            "(not multiprocessing Manager) structures."
+        )
+
+
+def _format_default_display(value):
+    if value is None:
+        return "None"
+    return repr(value)
+
+
+def _default_prompt(label, source, default_display):
+    """*source* is ``schema`` (.dd / AddARow) or ``exer`` (gDSExer-only)."""
+    return f"{label} [{source}: {default_display}]: "
+
+
+def _mandatory_prompt(label, *, required_by):
+    """Required value; *required_by* is ``schema`` (.dd) or ``exer`` (command flow)."""
+    return (
+        f"{label} [{required_by}: required, exer: {_COMMAND_CANCEL_DISPLAY}]: "
+    )
+
+
+def _menu_choice_prompt(choices, *, exer_default=None):
+    """Prompt for a numbered menu; default is *exer_default* or the first entry."""
+    display = exer_default if exer_default is not None else choices[0][0]
+    return _default_prompt("Choice", "exer", display)
+
+
+def _prompt_schema_optional(column_label, parse_fn, *, normalizer=None):
+    """Optional AddARow column whose default comes from the .dd schema."""
+    spec = SCHEMA_COLUMN_DEFAULTS[column_label]
+    if spec is _SCHEMA_REQUIRED:
+        raise ValueError(
+            f"{column_label} has no schema default in {_CTX.dd_path}"
+        )
+    value = parse_fn(
+        get_terminal_input(
+            _default_prompt(
+                column_label, "schema", _format_default_display(spec)
+            ),
+            normalizer=normalizer,
+        )
+    )
+    _commit_script_input()
+    return value
+
+
+def _prompt_exer_optional(column_label, exer_display, parse_fn, *, normalizer=None):
+    """Optional value whose default is defined only in gDSExer."""
+    value = parse_fn(
+        get_terminal_input(
+            _default_prompt(column_label, "exer", exer_display),
+            normalizer=normalizer,
+        )
+    )
+    _commit_script_input()
+    return value
+
+
+def _parse_choice_from_menu(word, choices, aliases):
+    """Resolve a numbered menu pick, canonical *key*, or alias."""
+    word = word.strip().lower()
+    if not word:
+        return choices[0][0]
+    idx = _parse_menu_index(word, len(choices))
+    if idx is not None:
+        return choices[idx][0]
+    mapped = aliases.get(word)
+    if mapped in {key for key, _ in choices}:
+        return mapped
+    for key, _ in choices:
+        if key.lower() == word:
+            return key
+    return None
+
+
+def display_delete_mode_choices(table):
+    _display_numbered_choices(f"{table}_DeleteRows mode:", DELETE_MODE_CHOICES)
+
+
+def _parse_delete_mode(word):
+    return _parse_choice_from_menu(word, DELETE_MODE_CHOICES, DELETE_MODE_ALIASES)
+
+
+def display_ral_choices(dest_table):
+    _display_numbered_choices(f"RAL source for {dest_table}:", RAL_CHOICE_CHOICES)
+
+
+def _parse_ral_choice(word):
+    return _parse_choice_from_menu(word, RAL_CHOICE_CHOICES, RAL_CHOICE_ALIASES)
+
+
+def display_delete_action_choices():
+    _display_numbered_choices(
+        "Referencing rows when dest row was deleted:",
+        DELETE_ACTION_CHOICES,
+    )
+
+
+def _parse_delete_action(word):
+    return _parse_choice_from_menu(word, DELETE_ACTION_CHOICES, DELETE_ACTION_ALIASES)
+
+
+def _prompt_delete_action():
+    """Mandatory deleteRow or setRefToNone."""
+    while True:
+        display_delete_action_choices()
+        action = _parse_delete_action(
+            get_terminal_input(
+                _menu_choice_prompt(DELETE_ACTION_CHOICES),
+                normalizer=_normalize_delete_action_recording,
+            )
+        )
+        if action in ("setRefToNone", "deleteRow"):
+            _commit_script_input()
+            return action
+        print("Enter 1 (deleteRow) or 2 (setRefToNone).", file=sys.stderr)
+
+
+def _list_script_files(directory="."):
+    """Return sorted ``.scr`` script paths in *directory*."""
+    return sorted(glob.glob(os.path.join(directory, "*.scr")))
+
+
+def _script_first_line(path):
+    """Return the first line of a script file, or ``""`` if unreadable."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.readline().rstrip("\n\r")
+    except OSError:
+        return ""
+
+
+def _display_script_files(*, for_recording=False):
+    """Print numbered ``.scr`` scripts in the current directory."""
+    scripts = _list_script_files()
+    _leading_sep()
+    print("Scripts in this directory:")
+    print("")
+    if for_recording:
+        print("  Enter a listed number, or type a name for a new script (.scr added if omitted).")
+    else:
+        print("  Enter a listed number, or type the name of an existing script.")
+    print("")
+    if not scripts:
+        print("  (none listed)")
+    else:
+        for i, path in enumerate(scripts, start=1):
+            first_line = _script_first_line(path)
+            line = f"  {i} - {os.path.basename(path)}"
+            if first_line:
+                line += f"  {first_line}"
+            print(line)
+    print()
+    return scripts
+
+
+def _resolve_script_choice(val, scripts):
+    """Map a prompt response to a script path, or ``None`` if skipped."""
+    val = val.strip()
+    if not val or val.lower() in ("no file", "none"):
+        return None
+    try:
+        idx = int(val) - 1
+        if 0 <= idx < len(scripts):
+            return scripts[idx]
+    except ValueError:
+        pass
+    try:
+        return ScriptIO._normalize_script_filespec(val)
+    except ValueError:
+        return val
+
+
+_RECORD_EXISTING_CHOICES = (
+    ("overwrite", "replace the file"),
+    ("append", "add to the end of the file"),
+    ("cancel", "do not record"),
+)
+
+_RECORD_EXISTING_ALIASES = {
+    "1": "overwrite",
+    "overwrite": "overwrite",
+    "o": "overwrite",
+    "y": "overwrite",
+    "yes": "overwrite",
+    "2": "append",
+    "append": "append",
+    "a": "append",
+    "3": "cancel",
+    "cancel": "cancel",
+    "n": "cancel",
+    "no": "cancel",
+    "": "cancel",
+}
+
+_RECORD_TABLE_STATE_CHOICES = (
+    ("correct", "current table state is correct"),
+    ("playback", "play script(s) first"),
+    ("cancel", "cancel recording"),
+)
+
+_RECORD_TABLE_STATE_ALIASES = {
+    "1": "correct",
+    "correct": "correct",
+    "ok": "correct",
+    "yes": "correct",
+    "y": "correct",
+    "2": "playback",
+    "playback": "playback",
+    "play": "playback",
+    "p": "playback",
+    "3": "cancel",
+    "cancel": "cancel",
+    "n": "cancel",
+    "no": "cancel",
+    "": "correct",
+}
+
+
+def _display_record_existing_choices(path):
+    _display_numbered_choices(f"Script {path!r} exists:", _RECORD_EXISTING_CHOICES)
+
+
+def _parse_record_existing_choice(word):
+    return _parse_choice_from_menu(
+        word, _RECORD_EXISTING_CHOICES, _RECORD_EXISTING_ALIASES
+    )
+
+
+def _normalize_record_existing_recording(word):
+    choice = _parse_record_existing_choice(word)
+    return choice if choice else word
+
+
+def _parse_record_table_state_choice(word):
+    return _parse_choice_from_menu(
+        word, _RECORD_TABLE_STATE_CHOICES, _RECORD_TABLE_STATE_ALIASES
+    )
+
+
+def _set_rec_pending(filespec):
+    global _REC_PENDING
+    _REC_PENDING = {"filespec": filespec}
+
+
+def _clear_rec_pending():
+    global _REC_PENDING
+    _REC_PENDING = None
+
+
+def _rec_pending_filespec():
+    return _REC_PENDING["filespec"] if _REC_PENDING else None
+
+
+def _prompt_table_state_before_recording(filespec):
+    """Return True when table state is confirmed; False if cancelled or playback started."""
+    while True:
+        _display_numbered_choices(
+            "Table state before recording:",
+            _RECORD_TABLE_STATE_CHOICES,
+        )
+        choice = _parse_record_table_state_choice(
+            get_terminal_input(
+                _menu_choice_prompt(
+                    _RECORD_TABLE_STATE_CHOICES, exer_default="correct"
+                ),
+            )
+        )
+        if choice == "correct":
+            _clear_rec_pending()
+            return True
+        if choice == "cancel":
+            _clear_rec_pending()
+            return False
+        path = _prompt_playback_script()
+        if not path:
+            _outcome_summary("Playback not started.")
+            continue
+        _set_rec_pending(filespec)
+        _cmd_start_playback(path)
+        _outcome_summary(
+            "When playback finishes (return), confirm table state to continue "
+            "recording."
+        )
+        return False
+
+
+def _prompt_script_record_mode(path):
+    """Return ``new``, ``overwrite``, ``append``, or ``None`` (cancel)."""
+    if not os.path.isfile(path):
+        return "new"
+    while True:
+        _display_record_existing_choices(path)
+        choice = _parse_record_existing_choice(
+            get_terminal_input(
+                _menu_choice_prompt(_RECORD_EXISTING_CHOICES, exer_default="cancel"),
+                normalizer=_normalize_record_existing_recording,
+            )
+        )
+        if choice in ("overwrite", "append", "cancel"):
+            return None if choice == "cancel" else choice
+        print("Enter 1 (overwrite), 2 (append), or 3 (cancel).", file=sys.stderr)
+
+
+def _prompt_playback_script():
+    """Ask for an optional playback script after listing ``.scr`` files."""
+    scripts = _display_script_files(for_recording=False)
+    val = get_terminal_input(
+        _default_prompt(
+            "Script number or existing script name",
+            "exer",
+            "do not playback",
+        ),
+        normalizer=_normalize_script_filespec_recording,
+    )
+    return _resolve_script_choice(val, scripts)
+
+
+def _prompt_record_script():
+    """Ask for an optional record script after listing ``.scr`` files."""
+    scripts = _display_script_files(for_recording=True)
+    val = get_terminal_input(
+        _default_prompt(
+            "Script number or new script name",
+            "exer",
+            "do not record",
+        ),
+        normalizer=_normalize_script_filespec_recording,
+    )
+    return _resolve_script_choice(val, scripts)
+
+
+def _commit_script_input():
+    """Log the last prompt/response to the record script after validation."""
+    if _SCRIPT is not None:
+        _SCRIPT.commit_pending_record()
+
+
+def _discard_script_input():
+    """Drop the pending prompt/response without writing it to the record script."""
+    if _SCRIPT is not None:
+        _SCRIPT._pending_record = None
+
+
+def get_terminal_input(prompt="\nCommand: ", *, normalizer=None):
+    """Read one line from a script or stdin.
+
+    Defaults are labeled ``[schema: …]`` (from the .dd / ``*_AddARow``) or
+    ``[exer: …]`` (gDSExer only).  Parsers apply the matching value when the
+    line is empty.  While recording, call ``_commit_script_input()`` only after
+    the response is accepted as valid; lines are held until the command succeeds.
+    """
+    if _SCRIPT is not None:
+        return _SCRIPT.read(prompt, normalizer)
+    prompt = prompt.rstrip()
+    if prompt.endswith("?"):
+        prompt = prompt[:-1].rstrip()
+    if not prompt.endswith(": "):
+        if prompt.endswith(":"):
+            prompt += " "
+        else:
+            prompt += ": "
+    return input(prompt).strip()
+
+
+def _pause_after_command_outcome():
+    """Pause so command output is visible before tables redisplay."""
+    input("Press Return to continue...")
+
+
+_OUTCOME_STAR_LINE = "*" * 15
+
+_menu_outcome_active = False
+_after_main_command_input = False
+_COMMAND_HISTORY = ()
+_COMMAND_HISTORY_MAX = 5
+
+
+def _command_history_row_name(table, row_ref):
+    if table is None or row_ref is None:
+        return ""
+    spec = DISPLAY_SPECS.get(table)
+    if not spec:
+        return ""
+    names = spec[0]
+    if names is None:
+        return ""
+    return _deref_name(row_ref, names)
+
+
+def _command_history_script_name(path):
+    if not path:
+        return ""
+    return os.path.basename(path)
+
+
+def _format_command_history_entry(cmd, table=None, row_ref=None):
+    row_part = "" if row_ref is None else str(row_ref)
+    name_part = _command_history_row_name(table, row_ref)
+    return f"{cmd}; {table or ''}; {row_part}; {name_part}"
+
+
+def _push_command_history(cmd, table=None, row_ref=None):
+    global _COMMAND_HISTORY
+    entry = _format_command_history_entry(cmd, table, row_ref)
+    history = list(_COMMAND_HISTORY)
+    history.append(entry)
+    if len(history) > _COMMAND_HISTORY_MAX:
+        history = history[-_COMMAND_HISTORY_MAX:]
+    _COMMAND_HISTORY = tuple(history)
+
+
+def _display_main_menu_with_history():
+    """Print the five-line main menu with up to five history entries on the right."""
+    menu_width = max(len(line) for line in _MAIN_MENU_LINES)
+    history = list(_COMMAND_HISTORY)
+    if len(history) > _COMMAND_HISTORY_MAX:
+        history = history[-_COMMAND_HISTORY_MAX:]
+    padded = [""] * (_COMMAND_HISTORY_MAX - len(history)) + history
+    hist_col = menu_width + 3
+    dash_width = 20
+    heading = "History"
+    heading_col = hist_col + (dash_width - len(heading)) // 2
+    print(" " * heading_col + heading)
+    print(" " * hist_col + "-" * dash_width)
+    for menu_line, hist_line in zip(_MAIN_MENU_LINES, padded):
+        row = menu_line + " " * (menu_width - len(menu_line) + 3)
+        if hist_line:
+            row += f"| {hist_line}"
+        print(row)
+
+
+def _consume_post_command_blank():
+    """Clear the blank already printed after a main-menu command."""
+    global _after_main_command_input
+    if _after_main_command_input:
+        _after_main_command_input = False
+        return True
+    return False
+
+
+def _leading_sep(*, file=None):
+    """One blank line before an output block; skip if post-command blank already printed."""
+    if _consume_post_command_blank():
+        return
+    print(file=file)
+
+
+def _outcome_reset():
+    global _menu_outcome_active, _after_main_command_input
+    _menu_outcome_active = False
+    _after_main_command_input = False
+
+
+def _outcome_print(*args, continued=False, **kwargs):
+    """Print menu-operation outcome detail (summary lines use ``_outcome_summary``)."""
+    global _menu_outcome_active
+    if not continued and not _menu_outcome_active:
+        _leading_sep()
+        _menu_outcome_active = True
+    elif not continued:
+        _menu_outcome_active = True
+    print(*args, **kwargs)
+
+
+def _outcome_summary(*args, **kwargs):
+    """Print the action summary line bordered by lines of 15 stars."""
+    global _menu_outcome_active
+    stream = kwargs.get("file", sys.stdout)
+    if _menu_outcome_active:
+        print(file=stream)
+    else:
+        _consume_post_command_blank()
+        print(file=stream)
+    print(_OUTCOME_STAR_LINE, file=stream)
+    print(*args, **kwargs)
+    print(_OUTCOME_STAR_LINE, file=stream)
+    _menu_outcome_active = True
+
+
+def _outcome_finish():
+    """Blank line after outcome stars, before the pause prompt."""
+    global _menu_outcome_active
+    if _menu_outcome_active:
+        print()
+        _menu_outcome_active = False
+
+
+def _deref_name(ref, name_col):
+    if ref is None:
+        return "???"
+    try:
+        name = name_col[ref]
+    except (IndexError, TypeError):
+        return "???"
+    if name is None:
+        return "???"
+    return name
+
+
+def _format_one_ref(label, ref, name_col):
+    if ref is None:
+        return f"{label}=None(???)"
+    name = _deref_name(ref, name_col)
+    if name == "???":
+        return f"{label}={ref}(???)"
+    return f"{label}={name!r}"
+
+
+def _format_adjust_row_ref(label, ref, name_col):
+    """One row ref with dereferenced Name for adjust outcome summaries."""
+    if ref is None:
+        return f"{label}=None(???)"
+    name = _deref_name(ref, name_col)
+    if name == "???":
+        return f"{label}={ref}(???)"
+    return f"{label}={ref} {name!r}"
+
+
+def _format_many_ref_entry(ref, name_col):
+    """One many-ref element: ref index (or None) then dereferenced Name."""
+    if ref is None:
+        return "None(???)"
+    name = _deref_name(ref, name_col)
+    if name == "???":
+        return f"{ref}(???)"
+    return f"{ref} {name!r}"
+
+
+def _format_many_refs(label, refs, name_col):
+    if not refs:
+        return f"{label}=[]"
+    entries = [_format_many_ref_entry(ref, name_col) for ref in refs]
+    return f"{label}=[{', '.join(entries)}]"
+
+
+def _ref_fields(row, ref_specs):
+    parts = []
+    for spec in ref_specs:
+        label, col, name_col = spec[0], spec[1], spec[2]
+        is_many = len(spec) > 3 and spec[3]
+        val = col[row]
+        if is_many:
+            parts.append(_format_many_refs(label, val, name_col))
+        else:
+            parts.append(_format_one_ref(label, val, name_col))
+    return parts
+
+
+def _fmt_table_name(table):
+    return f"{table:<{TABLE_NAME_WIDTH}}"
+
+
+def _display_table_for_row_ref(table):
+    """Show current rows in *table* before a row-ref prompt."""
+    if table not in DISPLAY_SPECS:
+        return
+    print("")
+    display_table(table)
+    print()
+
+
+def display_table(table):
+    """Print one line per row: add#, table, row index, Name, extras, refs, RowStatus."""
+    names, ref_specs, row_status, extra_fields = DISPLAY_SPECS[table]
+    label = f"  {_fmt_table_name(table)}"
+    n = len(row_status)
+    if n == 0:
+        print(f"{label}  (no rows to display)")
+        return
+    for row in range(n):
+        ref_parts = _ref_fields(row, ref_specs)
+        refs_str = "  ".join(ref_parts) if ref_parts else "(no ref columns defined)"
+        extra_str = "  ".join(f"{lbl}={col[row]!r}" for lbl, col in extra_fields)
+        if extra_str:
+            extra_str = f"  {extra_str}"
+        print(
+            f"{label}  {row}   Name={names[row]!r}{extra_str}  {refs_str}  "
+            f"RowStatus={row_status[row]!r}"
+        )
+
+
+def display_all_tables():
+    print("  Table name       Ref Contents")
+    print("  ----------       --- --------")
+    print("")
+    for i, table in enumerate(DISPLAY_TABLE_ORDER, start=1):
+        display_table(table)
+        print()
+
+
+def _apply_ral_number_for_spec(spec):
+    apply_name = spec[0]
+    for i, entry in enumerate(REF_ROUTINES):
+        if entry[0] == apply_name:
+            return _ref_selector_number(i)
+    return "?"
+
+
+def _invalidate_apply_ral_completed_for_dest(dest_table):
+    """New RAL for *dest_table* — those ApplyRALTo routines must be run again."""
+    for apply_name, _, _owning, dest, _ in REF_ROUTINES:
+        if dest == dest_table:
+            APPLY_RAL_COMPLETED.discard(apply_name)
+
+
+def _required_apply_ral_specs():
+    """ApplyRALTo routines required by current saved RALs, in menu order."""
+    specs = []
+    seen = set()
+    for spec in REF_ROUTINES:
+        apply_name, _, _owning, dest, _ = spec
+        if dest not in SAVED_RALS or apply_name in seen:
+            continue
+        seen.add(apply_name)
+        specs.append(spec)
+    return specs
+
+
+def display_saved_rals():
+    if not SAVED_RALS:
+        return
+    print("Saved RALs (from (D)elete):")
+    for table in DISPLAY_TABLE_ORDER:
+        if table not in SAVED_RALS:
+            continue
+        ral = SAVED_RALS[table]
+        print(f"  {table}: {list(ral)}")
+    required = _required_apply_ral_specs()
+    if required:
+        print("")
+        print("ApplyRALTo required for saved RAL(s) ([ ] pending, [x] done):")
+        for spec in required:
+            apply_name, _, owning, dest, _ = spec
+            number = _apply_ral_number_for_spec(spec)
+            mark = "x" if apply_name in APPLY_RAL_COMPLETED else " "
+            print(
+                f"  [{mark}] {number} - {apply_name}  "
+                f"(after deletes in {dest}; updates {owning} refs into {dest})"
+            )
+    print()
+
+
+def _ref_selector_number(index):
+    """1-based selector for ApplyRALTo routine *index* (0-based)."""
+    return str(index + 1)
+
+
+def _apply_ral_is_done(apply_name):
+    return apply_name in APPLY_RAL_COMPLETED
+
+
+def _ensure_apply_ral_not_done(spec):
+    apply_name, _, _owning, dest, _ = spec
+    if _apply_ral_is_done(apply_name):
+        raise ValueError(
+            f"{apply_name} was already run."
+        )
+
+
+def display_apply_routines():
+    _consume_post_command_blank()
+    print("ApplyRALTo routines:")
+    print("")
+    for i, (apply_name, _, owning, dest, many) in enumerate(REF_ROUTINES):
+        number = _ref_selector_number(i)
+        if many:
+            detail = "many-refs: removes matching list entries only"
+        else:
+            detail = "one-ref: prompts deleteRow or setRefToNone"
+        done = "  (done already)" if _apply_ral_is_done(apply_name) else ""
+        print(f"  {number} - {apply_name}  ({owning} -> {dest}, {detail}){done}")
+    print()
+
+
+def display_adjust_targets():
+    _leading_sep()
+    print("Ref columns to adjust (table name, column name):")
+    print("")
+    if not ADJUST_TARGETS:
+        print("  (none defined in schema)")
+        print("")
+        return
+    for i, target in enumerate(ADJUST_TARGETS):
+        number = _ref_selector_number(i)
+        kind = "change" if target.kind == "ref_one" else "add/remove"
+        print(f"  {number} - {target.label}  ({kind})")
+    print()
+
+
+def _parse_adjust_target(word):
+    """Resolve adjust target menu selection (1-based index or column name)."""
+    word = word.strip()
+    if not word:
+        return None
+    idx = _parse_menu_index(word, len(ADJUST_TARGETS))
+    if idx is not None:
+        return ADJUST_TARGETS[idx]
+    lower = word.lower()
+    for target in ADJUST_TARGETS:
+        if target.col_var.lower() == lower or target.label.lower() == lower:
+            return target
+    return None
+
+
+def _apply_adjust_change(target, action, owning_row, dest_row):
+    """Apply one change (one-ref) or add/remove (many-ref) directly to a ref column."""
+    if target.kind == "ref_one":
+        if action == "change":
+            target.storage[owning_row] = dest_row
+        return
+    if target.kind == "ref_many":
+        col = target.storage
+        if action == "add":
+            bucket = col[owning_row]
+            if bucket is None:
+                if _CTX.ordinary_containers:
+                    bucket = []
+                else:
+                    bucket = _CTX.gDSMgr.list()
+                col[owning_row] = bucket
+            bucket.append(dest_row)
+        elif action == "remove":
+            refs = col[owning_row]
+            if refs is None:
+                return
+            for ri in range(len(refs) - 1, -1, -1):
+                if refs[ri] == dest_row:
+                    del refs[ri]
+
+
+def _invoke_adjust():
+    if not ADJUST_TARGETS:
+        _outcome_summary("No ref columns to adjust.", file=sys.stderr)
+        return None
+    display_adjust_targets()
+    choice = get_terminal_input(
+        "Adjust target number/name: ",
+        normalizer=_normalize_adjust_target_recording,
+    ).strip()
+    target = _parse_adjust_target(choice)
+    if target is None:
+        _outcome_summary(f"Unknown adjust target {choice!r}.", file=sys.stderr)
+        return None
+    _commit_script_input()
+    if target.kind == "ref_many":
+        _display_numbered_choices("Adjust action:", ADJUST_MANY_ACTION_CHOICES)
+        while True:
+            action = _parse_choice_from_menu(
+                get_terminal_input(
+                    _menu_choice_prompt(ADJUST_MANY_ACTION_CHOICES),
+                    normalizer=_normalize_adjust_many_action_recording,
+                ),
+                ADJUST_MANY_ACTION_CHOICES,
+                ADJUST_MANY_ACTION_ALIASES,
+            )
+            if action in ("add", "remove"):
+                _commit_script_input()
+                break
+            _outcome_print("Enter 1 (add) or 2 (remove).", file=sys.stderr)
+    else:
+        action = "change"
+    owning_row = _prompt_row_ref(
+        f"{target.owning_table} row ref",
+        target.owning_table,
+    )
+    dest_label = (
+        f"{target.dest_table} row ref"
+        if target.kind == "ref_many"
+        else f"{target.dest_table} row ref (change to)"
+    )
+    dest_row = _prompt_row_ref(dest_label, target.dest_table)
+    _apply_adjust_change(target, action, owning_row, dest_row)
+    owning_part = _format_adjust_row_ref(
+        "owningRow", owning_row, target.owning_name_col
+    )
+    dest_part = _format_adjust_row_ref("destRow", dest_row, target.dest_name_col)
+    _outcome_summary(f"{target.label}: {action} {owning_part} {dest_part}")
+    return target.owning_table, owning_row
+
+
+def _parse_row_ref(text, *, required=False):
+    """Parse one row index; blank / ``None`` -> ``None`` unless *required*."""
+    text = text.strip()
+    if not text or text.lower() == "none":
+        if required:
+            raise ValueError("row ref is required")
+        return None
+    try:
+        return int(text)
+    except ValueError as exc:
+        raise ValueError(f"Invalid row ref {text!r}") from exc
+
+
+def _parse_ref(text):
+    """Parse a one-ref value: empty or ``None`` -> ``None``, else row index."""
+    return _parse_row_ref(text, required=False)
+
+
+def _parse_row_ref_list(text):
+    """Parse space-separated row refs; blank / ``None`` / ``[]`` -> ``[]``."""
+    text = text.strip()
+    if not text or text.lower() in ("none", "[]"):
+        return []
+    refs = []
+    for part in text.split():
+        if not part or part.lower() == "none":
+            continue
+        try:
+            refs.append(int(part))
+        except ValueError as exc:
+            raise ValueError(f"Invalid row ref {part!r}") from exc
+    return refs
+
+
+def _parse_many_refs(text):
+    """Parse a many-refs value: empty / none -> empty list, else row indices."""
+    parsed = _parse_row_ref_list(text)
+    if _CTX.ordinary_containers:
+        return parsed
+    refs = _CTX.gDSMgr.list()
+    for row_ref in parsed:
+        refs.append(row_ref)
+    return refs
+
+
+def _prompt_row_ref(label, table, *, required_by="exer", show_table=True):
+    """Read one required row index into *table*; re-prompt on blank or invalid input."""
+    if show_table:
+        _display_table_for_row_ref(table)
+    prompt = _mandatory_prompt(label, required_by=required_by)
+    while True:
+        line = get_terminal_input(prompt).strip()
+        try:
+            _raise_if_command_cancel(line)
+            value = _parse_row_ref(line, required=True)
+            _commit_script_input()
+            return value
+        except CommandCancelled:
+            raise
+        except ValueError as exc:
+            _outcome_summary(exc, file=sys.stderr)
+
+
+def _prompt_schema_ref(column_label, parse_fn=_parse_ref, *, normalizer=None):
+    """Optional one-ref column; show referenced table rows first."""
+    dest_table = REF_COLUMN_DEST_TABLE[column_label]
+    _display_table_for_row_ref(dest_table)
+    return _prompt_schema_optional(column_label, parse_fn, normalizer=normalizer)
+
+
+def _prompt_exer_many_refs(column_label, exer_display, parse_fn):
+    """Many-refs column; show referenced table rows first."""
+    dest_table = REF_COLUMN_DEST_TABLE[column_label]
+    _display_table_for_row_ref(dest_table)
+    return _prompt_exer_optional(column_label, exer_display, parse_fn)
+
+
+def _parse_optional_value(text):
+    text = text.strip()
+    if not text or text.lower() == "none":
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        return text
+
+
+def _parse_apply_routine(word):
+    """Resolve ApplyRAL menu selection (1-based index or routine name)."""
+    word = word.strip().lower()
+    idx = _parse_menu_index(word, len(REF_ROUTINES))
+    if idx is not None:
+        return REF_ROUTINES[idx]
+    for spec in REF_ROUTINES:
+        if spec[0].lower() == word:
+            return spec
+    return None
+
+
+def _inbound_applyral_kinds(dest_table):
+    """Return ``{'one'}``, ``{'many'}``, or both for ApplyRAL routines into *dest_table*."""
+    kinds = set()
+    for _apply_name, _, _owning, dest, many in REF_ROUTINES:
+        if dest == dest_table:
+            kinds.add("many" if many else "one")
+    return kinds
+
+
+def _has_inbound_applyral(dest_table):
+    """True if any ApplyRAL routine targets rows deleted from *dest_table*."""
+    return bool(_inbound_applyral_kinds(dest_table))
+
+
+def _run_deleterows(table):
+    """Prompt and call ``{table}_DeleteRows``; return the RAL."""
+    delete_fn = DELETE_FNS.get(table)
+    if delete_fn is None:
+        raise ValueError(f"No DeleteRows routine for {table!r}")
+    display_delete_mode_choices(table)
+    while True:
+        mode = _parse_delete_mode(
+            get_terminal_input(
+                _menu_choice_prompt(DELETE_MODE_CHOICES),
+                normalizer=_normalize_delete_mode_recording,
+            )
+        )
+        if mode in ("allRows", "rowStatusValueToDelete", "rowReferencesToDelete"):
+            _commit_script_input()
+            break
+        print("Enter 1, 2, or 3.", file=sys.stderr)
+    if mode == "allRows":
+        return delete_fn("allRows")
+    if mode == "rowStatusValueToDelete":
+        row_status = _parse_optional_value(
+            get_terminal_input(
+                _default_prompt("RowStatus value to delete", "schema", "None")
+            )
+        )
+        _commit_script_input()
+        return delete_fn("rowStatusValueToDelete", row_status)
+    if mode == "rowReferencesToDelete":
+        _display_table_for_row_ref(table)
+        refs_text = get_terminal_input(
+            _default_prompt("Row refs to delete", "exer", "none")
+        )
+        refs = _parse_row_ref_list(refs_text)
+        _commit_script_input()
+        return delete_fn("rowReferencesToDelete", refs)
+    raise ValueError(f"Unknown delete mode {mode!r}")
+
+
+def _delete_table_rows(table):
+    """Delete rows in *table*, save RAL; use apply command to update referencing tables."""
+    ral = _run_deleterows(table)
+    SAVED_RALS[table] = list(ral)
+    _invalidate_apply_ral_completed_for_dest(table)
+    deleted = sum(1 for x in ral if x is None)
+    kept = len(ral) - deleted
+    msg = f"{table}_DeleteRows done: {deleted} row(s) deleted, {kept} kept; RAL saved"
+    if _has_inbound_applyral(table):
+        seen_apply = set()
+        for _apply_name, _, owning, dest, _many in REF_ROUTINES:
+            if dest != table:
+                continue
+            hint = f"use {_apply_name} to update referencing tables"
+            if hint in seen_apply:
+                continue
+            seen_apply.add(hint)
+            msg += f"\n{hint}"
+    _outcome_summary(msg)
+
+
+def _get_ral_for_dest(dest_table):
+    """Use saved RAL for *dest_table* if requested, else build a new one."""
+    if dest_table in SAVED_RALS:
+        display_ral_choices(dest_table)
+        while True:
+            choice = _parse_ral_choice(
+                get_terminal_input(
+                    _menu_choice_prompt(RAL_CHOICE_CHOICES),
+                    normalizer=_normalize_ral_choice_recording,
+                )
+            )
+            if choice in ("saved", "build"):
+                _commit_script_input()
+                break
+            print("Enter 1 (saved) or 2 (build).", file=sys.stderr)
+        if choice == "saved":
+            _outcome_summary(
+                f"Using saved RAL for {dest_table}: {list(SAVED_RALS[dest_table])}"
+            )
+            return SAVED_RALS[dest_table]
+    return _run_deleterows(dest_table)
+
+
+def _active_script_path():
+    if _SCRIPT is None:
+        return None
+    return _SCRIPT.active_script_path
+
+
+def _script_basename():
+    path = _active_script_path()
+    if not path:
+        return None
+    return os.path.splitext(os.path.basename(path))[0]
+
+
+def _gold_root_dir():
+    """``{script_basename}_gold`` for numbered snapshot subdirs ``01``, ``02``, …"""
+    base = _script_basename()
+    if not base:
+        raise ValueError(
+            "No script file active (record or playback required for s/d)."
+        )
+    return f"{base}_gold"
+
+
+def _next_gold_slot_for_session():
+    """Next ``01``, ``02``, … slot for the outermost script (s/d sequence)."""
+    if _SCRIPT is None:
+        raise ValueError(
+            "No script file active (record or playback required for s/d)."
+        )
+    gold = _SCRIPT._gold_frame()
+    if gold is None:
+        raise ValueError(
+            "No script file active (record or playback required for s/d)."
+        )
+    gold.gold_op_counter += 1
+    return f"{gold.gold_op_counter:02d}"
+
+
+def _test_dir():
+    return "tempTables"
+
+
+def _table_json_path(folder, table):
+    return os.path.join(folder, f"{table}.json")
+
+
+def _gold_exists(folder):
+    if not os.path.isdir(folder):
+        return False
+    return any(
+        os.path.isfile(_table_json_path(folder, table))
+        for table in DISPLAY_TABLE_ORDER
+    )
+
+
+def _write_all_tables(folder):
+    os.makedirs(folder, exist_ok=True)
+    for idx, table in enumerate(DISPLAY_TABLE_ORDER):
+        path = _table_json_path(folder, table)
+        WRITE_FNS[table](path)
+        _outcome_print(f"  {table} -> {path!r}", continued=idx > 0)
+
+
+def _diff_gold_folder_vs_test(gold_folder, test_folder, slot):
+    """Diff JSON table files in *gold_folder* vs *test_folder* for slot *slot*."""
+    print()
+    _outcome_print(
+        f"Compare: diff {test_folder!r} vs. gold slot {slot} in {_gold_root_dir()!r}"
+    )
+    any_diff = False
+    table_line_idx = 0
+    for table in DISPLAY_TABLE_ORDER:
+        gold_path = _table_json_path(gold_folder, table)
+        test_path = _table_json_path(test_folder, table)
+        continued = table_line_idx > 0
+        if not os.path.isfile(gold_path):
+            _outcome_print(
+                f"  {table}: MISSING gold file {gold_path!r}",
+                file=sys.stderr,
+                continued=continued,
+            )
+            any_diff = True
+            table_line_idx += 1
+            continue
+        if not os.path.isfile(test_path):
+            _outcome_print(
+                f"  {table}: MISSING test file {test_path!r}",
+                file=sys.stderr,
+                continued=continued,
+            )
+            any_diff = True
+            table_line_idx += 1
+            continue
+        with open(gold_path, encoding="utf-8") as fh:
+            gold_lines = fh.readlines()
+        with open(test_path, encoding="utf-8") as fh:
+            test_lines = fh.readlines()
+        if gold_lines == test_lines:
+            _outcome_print(f"  {table}: OK", continued=continued)
+            table_line_idx += 1
+            continue
+        any_diff = True
+        _outcome_print(f"  {table}: DIFF", file=sys.stderr, continued=continued)
+        table_line_idx += 1
+        for line in difflib.unified_diff(
+            gold_lines,
+            test_lines,
+            fromfile=gold_path,
+            tofile=test_path,
+        ):
+            _outcome_print(line, end="", continued=True)
+    if any_diff:
+        _outcome_summary("Compare: FAILED", file=sys.stderr)
+        return False
+    _outcome_summary("Compare: PASSED")
+    return True
+
+
+def _compare_at_slot(slot, *, label="s/d (diff)", missing_gold_msg=None):
+    """Write tables to tempTables/ and diff against gold slot *slot*."""
+    root = _gold_root_dir()
+    test = _test_dir()
+    gold_folder = os.path.join(root, slot)
+    _outcome_print(f"{label}: writing tables to {test!r}")
+    _write_all_tables(test)
+    if not _gold_exists(gold_folder):
+        msg = missing_gold_msg or (
+            f"No gold snapshot in {gold_folder!r}; record s/d (save) first."
+        )
+        raise ValueError(msg)
+    return _diff_gold_folder_vs_test(gold_folder, test, slot)
+
+
+def _loop_compare_until_pass(slot, *, label="s/d (diff)", missing_gold_msg=None):
+    """Re-run compare on *slot* until it passes (pause between failures)."""
+    while True:
+        if _compare_at_slot(
+            slot, label=label, missing_gold_msg=missing_gold_msg
+        ):
+            return
+        _outcome_finish()
+        _pause_after_command_outcome()
+        _outcome_reset()
+
+
+def _sd_gold(*, from_playback=False):
+    """Save gold while recording; diff vs gold slot when line comes from playback."""
+    slot = _next_gold_slot_for_session()
+    if from_playback:
+        _loop_compare_until_pass(
+            slot,
+            label="s/d (diff)",
+            missing_gold_msg=(
+                f"No gold snapshot in {_gold_root_dir()}/{slot!r}; "
+                "record s/d (save) first."
+            ),
+        )
+        return slot
+    folder = os.path.join(_gold_root_dir(), slot)
+    _outcome_print(f"s/d (save): writing all tables to {folder!r}")
+    _write_all_tables(folder)
+    _outcome_summary(f"s/d (save): done (slot {slot})")
+    return slot
+
+
+def _dump_table(table):
+    """Run ``{table}_DumpRows`` to stdout."""
+    dump_fn = DUMP_FNS.get(table)
+    if dump_fn is None:
+        raise ValueError(f"No DumpRows routine for {table!r}")
+    _leading_sep()
+    dump_fn()
+    _outcome_summary(f"{table}_DumpRows done.")
+
+
+def _invoke_apply_ral(spec):
+    _ensure_apply_ral_not_done(spec)
+    apply_name, apply_fn, owning, dest, many = spec
+    _outcome_print(f"{apply_name}  ({owning} -> {dest})")
+    ral = _get_ral_for_dest(dest)
+    if many:
+        apply_fn(ral)
+    else:
+        delete_action = _prompt_delete_action()
+        apply_fn(ral, delete_action)
+    _outcome_summary(f"{apply_name}: done")
+    APPLY_RAL_COMPLETED.add(apply_name)
+
+
+def _row_status_column(table):
+    """RowStatus list column for *table*."""
+    return DISPLAY_SPECS[table][2]
+
+
+def _prompt_required(column_label):
+    """Read a required column (no schema default); re-prompt until non-empty input."""
+    prompt = _mandatory_prompt(column_label, required_by="schema")
+    while True:
+        value = get_terminal_input(prompt).strip()
+        _raise_if_command_cancel(value)
+        if value:
+            parsed = _parse_required_value(value)
+            _commit_script_input()
+            return parsed
+        _outcome_print(f"{column_label} is required.", file=sys.stderr)
+
+
+def _parse_required_value(text):
+    """Parse a required AddARow value (int when numeric, else string)."""
+    text = text.strip()
+    try:
+        return int(text)
+    except ValueError:
+        return text
+
+
+def _prompt_required_ref(column_label):
+    """Read a required one-ref (no ``None`` default in the .dd schema)."""
+    return _prompt_row_ref(
+        column_label,
+        REF_COLUMN_DEST_TABLE[column_label],
+        required_by="schema",
+    )
+
+
+def _parse_optional_string(text):
+    text = text.strip()
+    if not text or text.lower() == "none":
+        return None
+    return text
+
+
+def _prompt_row_status(column_label):
+    spec = SCHEMA_COLUMN_DEFAULTS[column_label]
+    if spec is _SCHEMA_REQUIRED:
+        prompt = _mandatory_prompt(column_label, required_by="schema")
+        while True:
+            value = get_terminal_input(prompt).strip()
+            _raise_if_command_cancel(value)
+            if value:
+                parsed = _parse_optional_value(value)
+                _commit_script_input()
+                return parsed
+            _outcome_print(f"{column_label} is required.", file=sys.stderr)
+    return _prompt_schema_optional(column_label, _parse_optional_value)
+
+
+def _set_row_status(table, row_ref=None, value=None):
+    """Set RowStatus on one row (``sr`` / ``rowstatus`` command)."""
+    col = _row_status_column(table)
+    if row_ref is None:
+        row_ref = _prompt_row_ref(f"{table} row ref", table)
+    if value is None:
+        value = _prompt_row_status(f"{table}_RowStatus")
+    if row_ref < 0 or row_ref >= len(col):
+        _outcome_summary(
+            f"Invalid row ref {row_ref} for {table} (0..{len(col) - 1}).",
+            file=sys.stderr,
+        )
+        return None
+    col[row_ref] = value
+    _outcome_summary(f"{table} row {row_ref} RowStatus = {value!r}")
+    return row_ref
+
+
+def display_table_choices():
+    """Compact table list for post-command selection."""
+    _leading_sep()
+    print("Tables:")
+    print("")
+    for i, table in enumerate(DISPLAY_TABLE_ORDER, start=1):
+        print(f"  {i} - {table}")
+    print()
+
+
+def _prompt_table_choice():
+    display_table_choices()
+    line = get_terminal_input(
+        _mandatory_prompt("Table name/number", required_by="exer"),
+        normalizer=_normalize_table_recording,
+    )
+    _raise_if_command_cancel(line)
+    table = _parse_table_name(line)
+    if table is None:
+        print("Unknown table name/number.", file=sys.stderr)
+        return None
+    _commit_script_input()
+    global _after_main_command_input
+    print()
+    _after_main_command_input = True
+    return table
+
+
+COMMAND_ALIASES = {
+    "a": "add",
+    "add": "add",
+    "d": "delete",
+    "delete": "delete",
+    "sr": "rowstatus",
+    "rowstatus": "rowstatus",
+    "p": "apply",
+    "apply": "apply",
+    "j": "adjust",
+    "adjust": "adjust",
+    "s/d": "s/d",
+    "u": "dump",
+    "dump": "dump",
+    "q": "quit",
+    "quit": "quit",
+    "rec": "rec",
+    "play": "play",
+    "return": "return",
+}
+
+
+def _normalize_command(word):
+    """Map a single-letter or full-word command to a canonical full-word command."""
+    return COMMAND_ALIASES.get(word.lower())
+
+
+def _parse_table_name(word):
+    if word in DISPLAY_TABLE_ORDER:
+        return word
+    try:
+        idx = int(word) - 1
+    except ValueError:
+        return None
+    if 0 <= idx < len(DISPLAY_TABLE_ORDER):
+        return DISPLAY_TABLE_ORDER[idx]
+    return None
+
+
+def _prompt_addarow_value(param):
+    """Prompt for one ``*_AddARow`` argument described by *param*."""
+    label = param.column_label
+    if param.vtype == "defineManyRefs":
+        return _prompt_exer_many_refs(label, "none", _parse_many_refs)
+    if param.vtype == "defineRowStatus":
+        return _prompt_row_status(label)
+    if param.vtype == "defineOneRef":
+        if param.schema_default is _SCHEMA_REQUIRED:
+            return _prompt_required_ref(label)
+        return _prompt_schema_ref(label)
+    if param.vtype in ("defineName", "defineColumn"):
+        if param.schema_default is _SCHEMA_REQUIRED:
+            return _prompt_required(label)
+        parse_fn = (
+            _parse_optional_string
+            if param.vtype == "defineName"
+            else _parse_optional_value
+        )
+        return _prompt_schema_optional(label, parse_fn)
+    raise ValueError(f"unsupported AddARow param type {param.vtype!r} for {label!r}")
+
+
+def _format_addarow_value_part(param, value):
+    """One ``heading=value`` fragment for a create-row summary line."""
+    heading = param.heading
+    if param.vtype == "defineOneRef":
+        return _format_one_ref(heading, value, param.dest_name_col)
+    if param.vtype == "defineManyRefs":
+        return _format_many_refs(heading, value, param.dest_name_col)
+    return f"{heading}={value!r}"
+
+
+def _format_created_row_summary(table, row_ref, params, args):
+    """Summary after ``<table>_AddARow`` with labeled column values."""
+    parts = [
+        _format_addarow_value_part(param, value)
+        for param, value in zip(params, args)
+    ]
+    return f"Created {table} row {row_ref}: " + "  ".join(parts)
+
+
+def _create_row(table):
+    add_fn = ADD_FNS.get(table)
+    if add_fn is None:
+        _outcome_summary(f"No AddARow routine for {table!r}", file=sys.stderr)
+        return
+    params = ADDAROW_PARAMS.get(table, [])
+    if not params:
+        _outcome_summary(f"No AddARow parameters for {table!r}", file=sys.stderr)
+        return
+
+    kwargs = {}
+    for param in params:
+        kwargs[f"_{param.col_var}"] = _prompt_addarow_value(param)
+
+    try:
+        row_ref = add_fn(**kwargs)
+    except ValueError as exc:
+        _outcome_summary(exc, file=sys.stderr)
+        return
+
+    args = [kwargs[f"_{param.col_var}"] for param in params]
+    _outcome_summary(_format_created_row_summary(table, row_ref, params, args))
+    return row_ref
+
+
+def _start_recording_session(filespec=None):
+    """Resolve the record script path and open it for writing."""
+    if filespec:
+        try:
+            path = ScriptIO._normalize_script_filespec(filespec)
+        except ValueError as exc:
+            _outcome_summary(exc, file=sys.stderr)
+            return
+    else:
+        path = _prompt_record_script()
+    if path:
+        path = ScriptIO._normalize_script_filespec(path)
+    if not path:
+        _outcome_summary("Recording not started.")
+        return
+    mode = _SCRIPT.begin_recording(path)
+    if mode:
+        if filespec:
+            _record_script_filespec_line(path, "Record script name")
+        else:
+            _commit_script_input()
+        if mode == "append":
+            _outcome_summary(f"Appending to {path!r}.")
+        else:
+            _outcome_summary(f"Recording to {path!r}.")
+    else:
+        _outcome_summary("Recording cancelled.")
+
+
+def _resume_recording_after_playback():
+    """Re-prompt for table state after prerequisite playback."""
+    filespec = _rec_pending_filespec()
+    if not _prompt_table_state_before_recording(filespec):
+        if _REC_PENDING is None:
+            _outcome_summary("Recording not started.")
+        return
+    _start_recording_session(filespec)
+
+
+def _cmd_start_recording(filespec=None):
+    """Start recording to a new ``.scr`` (optional *filespec*)."""
+    global _SCRIPT
+    if _SCRIPT is None:
+        _SCRIPT = ScriptIO()
+    if _SCRIPT._stack:
+        if _SCRIPT.is_recording():
+            _outcome_summary(
+                f"Already recording to {_SCRIPT.record_path!r}.",
+                file=sys.stderr,
+            )
+        else:
+            _outcome_summary(
+                "Recording requires interactive mode (return to top level first).",
+                file=sys.stderr,
+            )
+        return
+    if _REC_PENDING is not None and filespec is None:
+        filespec = _rec_pending_filespec()
+    if not _prompt_table_state_before_recording(filespec):
+        if _REC_PENDING is None:
+            _outcome_summary("Recording not started.")
+        return
+    _start_recording_session(filespec)
+
+
+def _cmd_start_playback(filespec=None):
+    """Start playback from a ``.scr`` (optional *filespec*)."""
+    global _SCRIPT
+    if _SCRIPT is None:
+        _SCRIPT = ScriptIO()
+    if filespec:
+        try:
+            path = ScriptIO._resolve_script_filespec(filespec)
+        except ValueError as exc:
+            _outcome_summary(exc, file=sys.stderr)
+            return
+    else:
+        path = _prompt_playback_script()
+    if not path:
+        _outcome_summary("Playback not started.")
+        return
+    path = ScriptIO._normalize_script_filespec(path)
+    if _SCRIPT.is_recording():
+        if filespec:
+            _record_script_filespec_line(path, "Playback script")
+        else:
+            _commit_script_input()
+    try:
+        _SCRIPT.begin_playback(path)
+    except OSError as exc:
+        _outcome_summary(exc, file=sys.stderr)
+        return
+    _outcome_summary(f"Playing back {path!r}.")
+
+
+def _cmd_pop_level():
+    """Pop one script level (``return``). Return the script path popped, or ``None``."""
+    global _SCRIPT
+    if _SCRIPT is None or not _SCRIPT._stack:
+        _outcome_summary("Not recording or playing back.")
+        return None
+    kind, path = _SCRIPT.pop_level()
+    if kind == "record":
+        _outcome_summary(f"Stopped recording ({path!r}).")
+    elif kind == "play":
+        if _SCRIPT._stack:
+            _outcome_summary(f"Returned from playback ({path!r}).")
+        else:
+            _outcome_summary(f"Stopped playback ({path!r}).")
+            if _REC_PENDING is not None:
+                _resume_recording_after_playback()
+    else:
+        _outcome_summary("Not recording or playing back.")
+    return path
+
+
+def _print_main_command_session_status():
+    """Show RECORD / PLAYBACK script status before the main command prompt."""
+    print()
+    if _SCRIPT is None or not _SCRIPT._stack:
+        print("INTERACTIVE")
+    else:
+        for line in _SCRIPT.session_status_lines():
+            print(line)
+    print()
+
+
+def _print_main_command_prompt_context():
+    """Menu/history and session status before a main-menu prompt or playback echo."""
+    _display_main_menu_with_history()
+    _print_main_command_session_status()
+
+
+def _read_main_command_line():
+    """Read one main-menu command."""
+    global _after_main_command_input
+    if _SCRIPT is not None and _SCRIPT._play_frame() is not None:
+        # Menu/history and status print in ScriptIO.read before playback echo.
+        pass
+    else:
+        _print_main_command_prompt_context()
+    line = get_terminal_input(
+        MAIN_COMMAND_PROMPT,
+        normalizer=_normalize_command_recording,
+    )
+    if line is not None and line.strip():
+        print()
+        _after_main_command_input = True
+    return line
+
+
+def _dispatch_command_line(line):
+    """
+    Run one main-menu command.
+
+    Returns ``"exit"`` to leave ``exercise_tables``, ``"pause"`` if the user
+    should press Return before tables redisplay, or ``"noop"`` otherwise.
+    """
+    if line is None:
+        return "pause"
+
+    stripped = line.strip()
+    if not stripped:
+        if (
+            _SCRIPT is not None
+            and _SCRIPT._record_buffer is not None
+        ):
+            _SCRIPT.discard_record_command_buffer()
+        return "noop"
+
+    parts = stripped.split(None, 1)
+    cmd = _normalize_command(parts[0].lower())
+    arg = parts[1].strip() if len(parts) > 1 else None
+
+    buffered = (
+        _SCRIPT is not None
+        and (_SCRIPT.is_recording() or cmd == "rec")
+    )
+    if buffered and _SCRIPT._record_buffer is None:
+        _SCRIPT.begin_record_command_buffer()
+
+    def _finish(result, *, commit=False):
+        if buffered:
+            if commit:
+                _SCRIPT.commit_record_command_buffer()
+            else:
+                _SCRIPT.discard_record_command_buffer()
+        return result
+
+    if cmd is not None:
+        if (
+            _SCRIPT is not None
+            and _SCRIPT.is_recording()
+            and cmd in ("return", "rec")
+        ):
+            _discard_script_input()
+        else:
+            _commit_script_input()
+    if cmd is None:
+        _print_command_usage()
+        return _finish("noop", commit=False)
+
+    if cmd == "rec":
+        stack_before = len(_SCRIPT._stack) if _SCRIPT else 0
+        _cmd_start_recording(arg)
+        commit = _SCRIPT is not None and len(_SCRIPT._stack) > stack_before
+        if commit:
+            _push_command_history(
+                "rec", _command_history_script_name(_SCRIPT.record_path)
+            )
+        return _finish("pause", commit=commit)
+
+    if cmd == "play":
+        stack_before = len(_SCRIPT._stack) if _SCRIPT else 0
+        _cmd_start_playback(arg)
+        commit = _SCRIPT is not None and len(_SCRIPT._stack) > stack_before
+        if commit:
+            _push_command_history(
+                "play", _command_history_script_name(_SCRIPT.playback_path)
+            )
+        return _finish("pause", commit=commit)
+
+    if cmd == "return":
+        had_stack = _SCRIPT is not None and bool(_SCRIPT._stack)
+        returned_path = _cmd_pop_level()
+        if had_stack and returned_path:
+            _push_command_history(
+                "return", _command_history_script_name(returned_path)
+            )
+        return _finish("pause", commit=had_stack)
+
+    if cmd == "quit":
+        return _finish("exit", commit=buffered)
+
+    if cmd == "s/d":
+        commit = False
+        try:
+            from_playback = (
+                _SCRIPT is not None and _SCRIPT.last_read_from_playback
+            )
+            slot = _sd_gold(from_playback=from_playback)
+        except (ValueError, OSError) as exc:
+            _outcome_summary(exc, file=sys.stderr)
+        else:
+            commit = True
+            _push_command_history("s/d", slot)
+        return _finish("pause", commit=commit)
+
+    if cmd == "dump":
+        try:
+            table = _prompt_table_choice()
+        except CommandCancelled:
+            return _finish("noop", commit=False)
+        if table is None:
+            return _finish("pause", commit=False)
+        commit = False
+        try:
+            _dump_table(table)
+        except (ValueError, OSError) as exc:
+            _outcome_summary(exc, file=sys.stderr)
+        else:
+            commit = True
+            _push_command_history("dump", table)
+        return _finish("pause", commit=commit)
+
+    if cmd == "apply":
+        display_apply_routines()
+        choice = get_terminal_input(
+            "ApplyRALTo routine number: ",
+            normalizer=_normalize_apply_recording,
+        ).strip().lower()
+        spec = _parse_apply_routine(choice)
+        if spec is None:
+            _outcome_summary(f"Unknown ApplyRALTo routine {choice!r}.", file=sys.stderr)
+            return _finish("pause", commit=False)
+        _commit_script_input()
+        commit = False
+        try:
+            _invoke_apply_ral(spec)
+        except CommandCancelled:
+            return _finish("noop", commit=False)
+        except ValueError as exc:
+            _outcome_summary(exc, file=sys.stderr)
+        else:
+            commit = True
+            _push_command_history("apply", spec[2])
+        return _finish("pause", commit=commit)
+
+    if cmd == "adjust":
+        commit = False
+        try:
+            adjust_ctx = _invoke_adjust()
+        except CommandCancelled:
+            return _finish("noop", commit=False)
+        except ValueError as exc:
+            _outcome_summary(exc, file=sys.stderr)
+        else:
+            if adjust_ctx is not None:
+                commit = True
+                table, row_ref = adjust_ctx
+                _push_command_history("adjust", table, row_ref)
+        return _finish("pause", commit=commit)
+
+    try:
+        table = _prompt_table_choice()
+    except CommandCancelled:
+        return _finish("noop", commit=False)
+    if table is None:
+        return _finish("noop", commit=False)
+
+    commit = False
+    try:
+        if cmd == "add":
+            row_ref = _create_row(table)
+            if row_ref is not None:
+                commit = True
+                _push_command_history("add", table, row_ref)
+        elif cmd == "delete":
+            if table not in DELETE_FNS:
+                _outcome_summary(f"No DeleteRows routine for {table!r}.", file=sys.stderr)
+                return _finish("pause", commit=False)
+            _delete_table_rows(table)
+            commit = True
+            _push_command_history("delete", table)
+        elif cmd == "rowstatus":
+            row_ref = _set_row_status(table)
+            if row_ref is not None:
+                commit = True
+                _push_command_history("rowstatus", table, row_ref)
+    except CommandCancelled:
+        return _finish("noop", commit=False)
+    except ValueError as exc:
+        _outcome_summary(exc, file=sys.stderr)
+    return _finish("pause", commit=commit)
+
+
+def exercise_tables():
+    """Interactive menu for exercising gDS tables."""
+    _print_defaults_legend_once()
+    while True:
+        print()
+        display_all_tables()
+        display_saved_rals()
+
+        _outcome_reset()
+        line = _read_main_command_line()
+        if line is not None and not line.strip():
+            if _SCRIPT is not None:
+                _SCRIPT.discard_record_command_buffer()
+            continue
+
+        result = _dispatch_command_line(line)
+        if result == "exit":
+            break
+        if result == "pause":
+            _outcome_finish()
+            _pause_after_command_outcome()
+
+
+SCRIPT_HELP_EPILOG = """
+
+The exerciser is used to interactively work with (any) schema defined in a .dd file.
+
+First, the .dd file must be compiled with gDSCompile. Then the gDSExer is run with
+the same .dd file. The user can then interactively add and delete rows in the tables defined
+by the schema and also record exercise/test scripts complete with comparisons against
+previously saved gold result files.
+
+The overall flow for recording and playing back script files is:
+
+1) Record sub-scripts that add and delete table rows, and that modify the references between rows.
+
+2) Record a controlling script that plays back the sub-scripts and, at checkpoints, saves the
+table state as “gold” files.
+
+3) The controlling script is then played back. At each checkpoint, the newly generated table data
+is diffed against the previously saved gold files, producing a PASS or FAIL result.
+
+If a problem occurs during the record phase, the user can resume recording from
+where the problem occurred; just remember to play back the previous sub-scripts
+before continuing to record.
+"""
+
+
+def _default_py_path(dd_path):
+    stem = os.path.splitext(os.path.basename(dd_path))[0]
+    return os.path.join(os.path.dirname(os.path.abspath(dd_path)), f"{stem}.py")
+
+
+def _parse_args():
+    parser = argparse.ArgumentParser(
+        description="Interactive exerciser/tester for gDS tables from a .dd schema.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=SCRIPT_HELP_EPILOG,
+    )
+    parser.add_argument(
+        "dd",
+        metavar="SCHEMA.dd",
+        help="gDS schema definition file",
+    )
+    parser.add_argument(
+        "py",
+        nargs="?",
+        metavar="MODULE.py",
+        help="generated Python module (default: <schema-stem>.py beside SCHEMA.dd)",
+    )
+    return parser.parse_args()
+
+
+def main():
+    global _SCRIPT
+    args = _parse_args()
+    dd_path = os.path.abspath(args.dd)
+    py_path = os.path.abspath(args.py) if args.py else _default_py_path(dd_path)
+
+    try:
+        ctx = load_exer_context(dd_path, py_path)
+    except (OSError, ValueError, ImportError, RuntimeError) as exc:
+        print(exc, file=sys.stderr)
+        return 1
+
+    _bind_context(ctx)
+
+    _SCRIPT = ScriptIO()
+    try:
+        exercise_tables()
+    except EOFError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    finally:
+        if _SCRIPT is not None:
+            _SCRIPT.close()
+            _SCRIPT = None
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

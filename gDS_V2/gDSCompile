@@ -1,0 +1,86 @@
+#!/usr/bin/python3
+#
+# gDSCompile - compile a gDS .dd schema to Python. (Assembled by Cursor 3.)
+#
+#   ./gDSCompile [-v] [-d] [-O] <schema.dd> >>>>> <schema.py>
+#
+#   -v    verbose: print Phase/verify/generate step announcements (off by default)
+#   -d    dump dsTable and dsVariable after schema load (before code generation)
+#   -O    generated target .py uses ordinary [] / {} (default: multiprocessing Manager)
+#
+#   <schema.dd>  full path to the data-definition (.dd) schema file (required).
+#                Output is <schema.py> beside the .dd (same stem).
+#
+# Pipeline (see gDSCompiler.py):
+#   Lexer -> Parser -> AST -> IR (dsTable/dsVariable) -> semantic analysis -> code emission
+#
+# Uses gDSCompiler.py, gDSSchema.py, gDSIr.py and gDSCompileCG.py.
+#
+
+import argparse
+import os
+import sys
+
+from gDSCompiler import CompileOptions, GDSCompiler
+
+
+def parse_cli(argv):
+    prog = os.path.basename(argv[0])
+    parser = argparse.ArgumentParser(
+        prog=prog,
+        description=(
+            "Compile a gDS .dd schema to Python (lexer/parser/AST pipeline with "
+            "gDSCompileCG code emission)."
+        ),
+    )
+    parser.add_argument(
+        "-v",
+        action="store_true",
+        dest="verbose",
+        help="verbose: print Phase/verify/generate step announcements",
+    )
+    parser.add_argument(
+        "-d",
+        action="store_true",
+        dest="dump",
+        help="dump dsTable and dsVariable after schema load, before code generation",
+    )
+    parser.add_argument(
+        "-O",
+        action="store_true",
+        dest="ordinary_containers",
+        help=(
+            "generated target .py uses ordinary [] / {} (not Manager); "
+            "auto-enabled for the gDS processor schema (dsTable + dsVariable only)"
+        ),
+    )
+    parser.add_argument(
+        "dd_path",
+        metavar="<schema.dd>",
+        help="full path to the data-definition (.dd) schema file",
+    )
+    args = parser.parse_args(argv[1:])
+    if not args.dd_path.endswith(".dd"):
+        parser.error("schema path must be a full filespec ending with .dd")
+    return args
+
+
+def main(argv=None):
+    argv = sys.argv if argv is None else argv
+    args = parse_cli(argv)
+    options = CompileOptions(
+        dd_path=args.dd_path,
+        verbose=args.verbose,
+        dump=args.dump,
+        ordinary_containers=args.ordinary_containers,
+    )
+    try:
+        GDSCompiler().compile(options)
+    except (OSError, RuntimeError, ValueError) as exc:
+        print(f"{os.path.basename(argv[0])}: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
