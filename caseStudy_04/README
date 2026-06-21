@@ -1,1 +1,9 @@
-Under construction.
+A gDS V2 schema to work with in the near future.
+
+To generate the gDS .py file:
+
+       ../gDS_V2/gDSCompile PVHTSG.dd
+
+To work with the mechanics of the schema:
+
+       ../gDS_V2/gDSExer PVHTSG.dd

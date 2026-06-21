@@ -1,0 +1,56 @@
+#
+# PVHTSG.dd - Person, Vehicle, House, Town, State, Governor gDS schema file
+#
+
+# Person table
+defineTable     gPerson
+defineName      gPerson_Name                            # If no default it's a required arg
+defineColumn    gPerson_DOB
+defineOneRef    gPerson_gHouse_Ref  gHouse      None    # Row offset into gHouse table
+defineManyRefs  gPerson_gVehicle_Refs           gVehicle # Refs to owned vehicles
+defineColumn    gPerson_Gender                  None    # Default value
+defineRowStatus gPerson_RowStatus               None    # Default / unused
+endTable
+
+# Vehicle table
+defineTable     gVehicle
+defineName      gVehicle_Name None
+defineColumn    gVehicle_Year
+defineColumn    gVehicle_Type
+defineColumn    gVehicle_VIN
+defineIndexManyRefs gVehicle_Type_2Refs gVehicle_Type
+defineRowStatus gVehicle_RowStatus None
+endTable
+
+# House table
+defineTable     gHouse
+defineName      gHouse_Name             None        # Unused - default to None
+defineColumn    gHouse_Address
+defineOneRef    gHouse_gTown_Ref        gTown       None    # Row offset into gTown table
+defineRowStatus gHouse_RowStatus        None        # Default / unused
+endTable
+
+# Town table
+defineTable     gTown
+defineName      gTown_Name
+defineColumn    gTown_ZipCode
+defineOneRef    gTown_gState_Ref        gState      # Row offset into gState table
+defineRowStatus gTown_RowStatus         None        # Default / unused
+endTable
+
+# State table
+defineTable     gState
+defineName      gState_Name
+defineIndexOneRef gState_Name_2Ref       gState_Name # Example index
+defineRowStatus gState_RowStatus        None        # Default / unused
+endTable
+
+# Governor's term table
+defineTable     gGovTerm
+defineName      gGovTerm_Name           None        # Unused - default to None
+defineOneRef    gGovTerm_gState_Ref     gState      # The State involved
+defineOneRef    gGovTerm_gPerson_Ref    gPerson     # The Governor involved
+defineColumn    gGovTerm_StartYear
+defineColumn    gGovTerm_EndYear
+defineRowStatus gGovTerm_RowStatus      None        # Default / unused
+endTable
