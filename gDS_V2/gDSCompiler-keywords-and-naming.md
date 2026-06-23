@@ -1,207 +1,178 @@
-# gDS Compiler — Keywords and Naming Conventions
+# gDS Compiler — Schema Language (`.dd` files)
 
-Summary of the language accepted by **gDSCompile** (see `gDSCompiler.py`, `gDSSchema.py`, `gDSCompileCG.py`). Schema files use the `.dd` extension; compilation produces a sibling `.py` module with the same stem.
+This document lists the words (keywords) you can use in a schema - `.dd` file and the naming rules the compiler enforces.
 
----
-
-## Schema file format
-
-- One directive per line; fields are **whitespace-separated tokens**.
-- **`#` starts an end-of-line comment**; text after `#` is ignored.
-- Blank lines are ignored.
-- **Keywords** are reserved tokens (see below). Any other token is an **identifier** (table or column name).
-- **Atoms** are `None` or a decimal integer literal; they may appear as optional values.
-- Each directive has the form:
-
-  ```text
-  <keyword> <name> [<optional-value> …]
-  ```
-
-  Up to **three optional values** may follow the name.
+**gDSCompile** reads `something.dd` and writes `something.py`.
 
 ---
 
-## Schema keywords
+## How to write a line
 
-### Table block
+Each line is one instruction:
 
-| Keyword | Level | Purpose |
-|---------|-------|---------|
-| `defineTable` | top | Start a **columnar** table; next token is the table name. |
-| `endTable` | inner | End the current `defineTable` block. |
+```text
+<keyword> <name> [<extra-value> …]
+```
 
-### Inner directives (inside `defineTable` … `endTable`)
-
-| Keyword | Storage | Role |
-|---------|---------|------|
-| `defineColumn` | shared list | Ordinary scalar column (parallel list per row). |
-| `defineName` | shared list | Row **name** column (exactly one per table; see naming). |
-| `defineRowStatus` | shared list | Row **status** column (exactly one; must be last inner line). |
-| `defineOneRef` | shared list | Single reference to another table’s row. |
-| `defineManyRefs` | shared list | List of references to another table’s rows. |
-| `defineIndexOneRef` | shared dict | Index: row ref → row ref (one-ref column). |
-| `defineIndexManyRefs` | shared dict | Index: row ref → list of row refs (many-refs column). |
-
-### Top-level singular shorthands (not inside a table block)
-
-| Keyword | Generated table kind | Purpose |
-|---------|---------------------|---------|
-| `defineUnary` | `unary` | Single scalar value; **requires optional value 1** (initial value). |
-| `defineList` | `list` | Top-level list container. |
-| `defineDict` | `dict` | Top-level dict container. |
-
-These expand to one `dsTable` row and one `dsVariable` row; they do **not** use `defineTable` / `endTable`.
+- Words are separated by spaces.
+- `#` starts a comment (rest of line is ignored).
+- A **keyword** is a special word from the tables below.
+- A **name** is your table or column name.
+- An **extra value** can be `None`, a number, or another name. Most lines have zero, one, or two extra values.
 
 ---
 
-## Structural rules (load-time verification)
+## Table block
 
-| Rule | Requirement |
-|------|-------------|
-| **Legal keywords** | Only the keywords above may appear; inner keywords only inside a table block. |
-| **Nesting** | `defineTable` / `endTable` must balance; singular shorthands cannot appear inside a block. |
-| **Unique names** | Table and variable names must be unique across the schema. |
-| **`defineName`** | Exactly **one** per columnar table. |
-| **`defineRowStatus`** | Exactly **one** per columnar table; must be the **last** inner directive before `endTable`. |
-| **Optional value 1** | Required for `defineIndexOneRef`, `defineIndexManyRefs`, `defineOneRef`, and `defineManyRefs` (see below). |
-| **`defineManyRefs`** | Only optional value 1 is allowed (referenced table); **no** optional value 2. |
-| **Reference graph** | `defineOneRef` / `defineManyRefs` must point at existing columnar tables, not the owning table, and (except the codegen mirror schema) must not form a directed cycle. |
+A normal table looks like this:
+
+```text
+defineTable  gAnimal
+defineName        gAnimal_Name
+defineColumn      gAnimal_Kind          None
+defineOneRef      gAnimal_gFarm_Ref     gFarm
+defineRowStatus   gAnimal_RowStatus     None
+endTable
+```
+
+| Keyword | Meaning |
+|---------|---------|
+| `defineTable` | Start a table. Next word is the table name. |
+| `endTable` | End the table. |
+
+### Column keywords (go inside `defineTable` … `endTable`)
+
+| Keyword | Stored as | Plain English |
+|---------|-----------|---------------|
+| `defineColumn` | Python list | One value per row (Kind, Age, …) |
+| `defineName` | Python list | The name of each row — **required, one per table** |
+| `defineRowStatus` | Python list | A status flag per row — **required, one per table, must be last** |
+| `defineOneRef` | Python list | One row number pointing into another table |
+| `defineManyRefs` | Python list | A list of row numbers pointing into another table |
+| `defineIndexOneRef` | Python dict | Quick lookup for a one-ref column |
+| `defineIndexManyRefs` | Python dict | Quick lookup for a many-refs column |
+
+### Stand-alone items (NOT inside a table block)
+
+| Keyword | Meaning |
+|---------|---------|
+| `defineUnary` | One single value (not a table). First extra value = starting value (**required**). |
+| `defineList` | One Python list |
+| `defineDict` | One Python dictionary |
 
 ---
 
-## Optional values by keyword
+## Rules the compiler checks
 
-| Keyword | Optional value 1 | Optional value 2 | Optional value 3 |
-|---------|------------------|------------------|------------------|
-| `defineColumn` | AddARow default | — | — |
-| `defineName` | Name **storage column** if different from line name; else default for AddARow | AddARow default | — |
-| `defineRowStatus` | AddARow default | — | — |
-| `defineOneRef` | **Referenced table name** (required) | AddARow default | — |
-| `defineManyRefs` | **Referenced table name** (required) | *(not allowed)* | — |
-| `defineIndexOneRef` | **Key column** to index (required) | — | — |
-| `defineIndexManyRefs` | **Key column** to index (required) | — | — |
-| `defineUnary` | **Initial value** (required) | — | — |
-| `defineList` / `defineDict` | *(schema-specific)* | — | — |
-
-Optional values on AddARow parameters become default argument values in generated `<table>_AddARow`.
+| Rule | What it means |
+|------|----------------|
+| Legal words only | Use only the keywords above |
+| Balanced blocks | Every `defineTable` has a matching `endTable` |
+| Unique names | No two tables or columns with the same name |
+| Name column | Exactly one `defineName` per table |
+| RowStatus column | Exactly one `defineRowStatus` per table; it must be the last line before `endTable` |
+| References | A ref must point at a real table (not itself). Refs cannot go in a circle. |
+| Indexes | Must say which column they index |
 
 ---
 
-## Native naming conventions (Phase 3)
+## Extra values on each line
 
-These rules are enforced for **columnar** tables. They keep column names, indexes, and references consistent with generated code.
+Most extra values become **default arguments** when you add a row (`AddARow`). Ref and index lines use the first extra value differently:
 
-### Table names
+| Keyword | 1st extra value | 2nd extra value |
+|---------|-----------------|-----------------|
+| `defineColumn` | Default when adding a row | — |
+| `defineName` | Default for name (usually unused) | Another default (rare) |
+| `defineRowStatus` | Default when adding a row | — |
+| `defineOneRef` | **Which table** this points to (**required**) | Default when adding a row |
+| `defineManyRefs` | **Which table** this points to (**required**) | — |
+| `defineIndexOneRef` | **Which column** to index (**required**) | — |
+| `defineIndexManyRefs` | **Which column** to index (**required**) | — |
+| `defineUnary` | **Starting value** (**required**) | — |
 
-- **No underscore** in the table name itself.  
-  Example: `gAnimal`, not `g_Animal`.
+---
 
-### Column names (all inner variables)
+## Naming rules
 
-- Every column name **starts with `{table}_`**.  
-  Example: table `gAnimal` → `gAnimal_Name`, `gAnimal_Species_Ref`.
+The compiler will **reject** bad names. Patterns:
 
-### Suffix rules by directive
+| What | Rule | Good example | Bad example |
+|------|------|--------------|-------------|
+| Table | No `_` in the name | `gAnimal` | `g_Animal` |
+| Any column | Starts with `{table}_` | `gAnimal_Kind` | `Kind` |
+| Name column | Ends with `_Name` | `gFarm_Name` | `gFarm_Title` |
+| RowStatus | Ends with `_RowStatus` | `gFarm_RowStatus` | `gFarm_Status` |
+| One ref | Ends with `_Ref`, three parts | `gFarm_gAnimal_Ref` | `gFarm_Animal` |
+| Many refs | Ends with `_Refs`, three parts | `gFarm_gHouse_Refs` | `gFarm_Houses` |
+| Index (one) | Ends with `_2Ref` | `gAnimal_Name_2Ref` | `gAnimal_NameIndex` |
+| Index (many) | Ends with `_2Refs` | `gFarm_gHouse_2Refs` | `gFarm_Index` |
 
-| Directive | Name must end with | Example (table `gFarm`) |
-|-----------|-------------------|-------------------------|
-| `defineName` | `_Name` | `gFarm_Name` |
-| `defineRowStatus` | `_RowStatus` | `gFarm_RowStatus` |
-| `defineOneRef` | `_Ref` | `gFarm_gAnimal_Ref` |
-| `defineManyRefs` | `_Refs` | `gFarm_gHouse_Refs` |
-
-### Reference column shape (`defineOneRef` / `defineManyRefs`)
-
-- Name splits into **exactly three** `_`-separated segments:  
-  `{owning}_{referenced-table}_{Ref|Refs}`
-- The **middle segment** must not equal the owning table name.
-- **Optional value 1** (referenced table) must match the middle segment.
-
-Examples for owning table `gFarm`:
+**Ref name pattern:** `{yourTable}_{otherTable}_Ref` — the middle part must match the table named in the 1st extra value.
 
 ```text
 defineOneRef    gFarm_gAnimal_Ref   gAnimal
 defineManyRefs  gFarm_gHouse_Refs   gHouse
 ```
 
-### Index column shape
-
-| Directive | Name pattern | Optional value 1 |
-|-----------|--------------|------------------|
-| `defineIndexOneRef` | `{table}_{tail}_2Ref` | Must name the indexed column `{table}_{tail}` |
-| `defineIndexManyRefs` | `{table}_{tail}_2Refs` | Must name the indexed column `{table}_{tail}` |
-
-Examples for table `dsVariable`:
+**Index pattern:** the 1st extra value names the column being indexed.
 
 ```text
-defineIndexOneRef   dsVariable_Name_2Ref   dsVariable_Name
-defineManyRefs      dsVariable_dsTable_Refs dsTable
-defineIndexOneRef   dsTable_Name_2Ref      dsTable_Name
+defineIndexOneRef  gAnimal_Name_2Ref   gAnimal_Name
 ```
 
-### Bare column names
-
-For `defineColumn`, `defineName`, and `defineRowStatus`, the **bare name** (text after the first `_` in the full column name) is stored in IR as `dsVariable_BareName` and used in dumps and prompts.
+**Bare name** — the part after the first `_` in a column name (`Kind` from `gAnimal_Kind`). Used in printouts and gDSExer prompts.
 
 ---
 
-## Generated Python naming
+## What Python code gets generated
 
-For each **columnar** table `{Table}`, the compiler emits:
+For each table `gAnimal`, the compiler writes functions like:
 
-| Generated symbol | Meaning |
-|------------------|---------|
-| `{Table}_AddARow(...)` | Append one row; parameters follow AddARow-eligible columns (`defineColumn`, `defineName`, `defineOneRef`, `defineManyRefs`, `defineRowStatus`). |
-| `{Table}_DumpRows(...)` | Print row/column contents. |
-| `{Table}_DeleteRows(deleteMethod, selectorValue=None)` | Delete rows; returns a **RAL** (Reference Adjustment List). |
-| `{Table}_WriteToFile(filespec)` | Serialize table to JSON. |
-| `{Table}_ReadFromFile(filespec)` | Load table from JSON. |
+| Function | What it does |
+|----------|--------------|
+| `gAnimal_AddARow(...)` | Add a row |
+| `gAnimal_DeleteRows(...)` | Delete rows; returns a **RAL** |
+| `gAnimal_DumpRows(...)` | Print the table |
+| `gAnimal_WriteToFile` / `_ReadFromFile` | Save or load JSON |
 
-For each outward reference from owning table `{Own}` to destination table `{Dest}`:
+For each pointer column from `gFarm` into `gAnimal`, it also writes:
 
-| Ref kind | Generated routine |
-|----------|-------------------|
-| one-ref column | `{Own}_ApplyRALTo_{Dest}_Ref` |
-| many-refs column | `{Own}_ApplyRALTo_{Dest}_Refs` |
+| Kind | Function |
+|------|----------|
+| One pointer | `gFarm_ApplyRALTo_gAnimal_Ref` |
+| Many pointers | `gFarm_ApplyRALTo_gAnimal_Refs` |
 
-Shared storage in the generated module:
+**RAL** = after a delete, a list that says “old row 2 is now row 1” or “old row 1 is gone.”
 
-- **List columns** → `gDSMgr.list()` by default, or `[]` with **`-O`** (ordinary containers).
-- **Index dicts** → `gDSMgr.dict()` by default, or `{}` with **`-O`**.
-
-Singular shorthands generate a single variable named like the schema line (e.g. `defineUnary count 0` → variable `count`).
+By default, columns use **shared-memory** lists (so multiple programs can see the same data). Use flag **`-O`** for normal Python `[]` and `{}`.
 
 ---
 
-## Compiler pipeline (reference)
+## Compiler command
 
-```text
-.dd file → Lexer → Parser → AST → IR (dsTable / dsVariable)
-         → semantic verification (Phases 1–3) → code generation → .py
+```bash
+./gDSCompile mySchema.dd
 ```
 
-**CLI** (`gDSCompile`):
-
-| Flag | Effect |
-|------|--------|
-| `-v` | Verbose phase/verify/generate messages |
-| `-d` | Dump IR after load |
-| `-O` | Generated `.py` uses ordinary `[]` / `{}` instead of `multiprocessing.Manager` |
-
-The **processor schema** (`gDSIr.dd`, tables `dsTable` and `dsVariable` only) is special: compiling it automatically enables `-O` so the compiler can bootstrap without Manager storage.
+| Flag | Meaning |
+|------|---------|
+| `-v` | More printout while compiling |
+| `-d` | Show internal tables (debugging) |
+| `-O` | Normal lists, not shared-memory |
 
 ---
 
-## Quick example
+## Full tiny example
 
 ```text
-defineTable     gAnimal
-defineName      gAnimal_Name
-defineColumn    gAnimal_Kind          None
-defineOneRef    gAnimal_gFarm_Ref     gFarm
-defineIndexOneRef gAnimal_Name_2Ref   gAnimal_Name
-defineRowStatus gAnimal_RowStatus     None
+defineTable       gAnimal
+defineName        gAnimal_Name
+defineColumn      gAnimal_Kind          None
+defineOneRef      gAnimal_gFarm_Ref     gFarm
+defineIndexOneRef gAnimal_Name_2Ref     gAnimal_Name
+defineRowStatus   gAnimal_RowStatus     None
 endTable
 ```
 
-This declares one columnar table with native names, one outward ref to `gFarm`, a name index, and row status — and generates `gAnimal_AddARow`, `gAnimal_DeleteRows`, `gAnimal_ApplyRALTo_gFarm_Ref`, and related helpers in `gAnimal.py` (or the schema stem’s `.py`).
+This produces code to create the necesssary tables plus helper routines `gAnimal_AddARow`, `gAnimal_DeleteRows`, `gAnimal_ApplyRALTo_gFarm_Ref`, and the rest in `mySchema.py`.

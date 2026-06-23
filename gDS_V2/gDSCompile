@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# gDSCompile - compile a gDS .dd schema to Python. (Assembled by Cursor 3.)
+# gDSCompile - compile a gDS .dd schema to Python. (Coded by Cursor 3.)
 #
 #   ./gDSCompile [-v] [-d] [-O] <schema.dd> >>>>> <schema.py>
 #
