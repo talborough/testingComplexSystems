@@ -3,6 +3,10 @@
 # gDSExer - Interactive exerciser for any gDS schema (need the .dd plus the generated .py).
 #           (Coded by Cursor 3.)
 #
+# Note that gDSExer *will not* help you figure out if the schema fits your application
+# but it will help you understand the mechanics of working with the gDS code emitted by
+# the gDSCompile routine.
+#
 
 import argparse
 import difflib

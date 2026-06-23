@@ -23,7 +23,7 @@ An **index** is a **dictionary** for fast lookup — like “find the row whose 
 
 You write the plan once in a `.dd` file. The compiler writes boring code for you: add a row, delete rows, fix broken pointers, save to JSON.
 
-There is no SQL. No database layer. Just lists, row numbers, and plain Python functions. It's up to you to see if gDS has merit for your application.
+There is no SQL. No database layer. Just lists, row numbers, and plain Python functions. This material can be used to see if gDS has merit for your application.
 
 ---
 
