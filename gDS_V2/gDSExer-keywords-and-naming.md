@@ -16,7 +16,7 @@ Schema language (`.dd` file): [gDSCompiler-keywords-and-naming.md](gDSCompiler-k
 ./gDSExer mySchema.dd
 ```
 
-When you run it, it explains the text found at the square brackets at prompts, like `[schema: None]`.
+When you run it, it starts by explaining the text found in the square brackets at prompts, like `[schema: None]`.
 
 ---
 
@@ -41,6 +41,9 @@ For `add`, `delete`, `rowstatus`, and `dump`, you then pick a table by **name** 
 
 ### Scripts and testing
 
+You can test ad-hoc, interactively and also record your inputs to gDSExer and play them back later. You can take checkpoints as you record and on subsequent replays, check your progress against the saved gold files.
+
+Here are the commands involved in recording and playback:
 
 | Type     | Shortcut | What it does                                                                            |
 | -------- | -------- | --------------------------------------------------------------------------------------- |
@@ -52,59 +55,6 @@ For `add`, `delete`, `rowstatus`, and `dump`, you then pick a table by **name** 
 
 
 Commands are not case-sensitive. A blank line at the main menu does nothing. A wrong command shows help and is not recorded.
-
----
-
-## Follow-up choices (sub-menus)
-
-### After `delete` — which rows to remove?
-
-
-| Type one of        | Removes                             |
-| ------------------ | ----------------------------------- |
-| `all` or `1`       | All rows                            |
-| `rowstatus` or `2` | Rows with a certain RowStatus value |
-| `rowrefs` or `3`   | Specific row numbers you list       |
-
-
-### After `delete` — the RAL
-
-A **RAL** is saved automatically. You will need it for the `apply`. (See README for what a RAL is.)
-
-### After `apply` — where does the RAL come from?
-
-
-| Type one of             | Meaning                             |
-| ----------------------- | ----------------------------------- |
-| `saved` or `1` or Enter | Use the RAL from your last `delete` |
-| `build` or `2`          | Build a RAL step by step            |
-
-
-### After `apply` — broken one-pointer
-
-If a row pointed at something that was deleted:
-
-
-| Type one of     | What happens                            |
-| --------------- | --------------------------------------- |
-| `delete` or `1` | Delete the row that has the bad pointer |
-| `none` or `2`   | Set the pointer to empty (`None`)       |
-
-
-### After `adjust` on a many-pointer column
-
-
-| Type one of     | What happens                      |
-| --------------- | --------------------------------- |
-| `add` or `1`    | Add a row number to the list      |
-| `remove` or `2` | Remove a row number from the list |
-
-
-### When you `rec` (record)
-
-**File already exists?** `overwrite` · `append` · `cancel`
-
-**Are tables in the right state?** `correct` · `playback` (run a script first) · `cancel`
 
 ---
 

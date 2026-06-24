@@ -1,18 +1,18 @@
 #
 # The gDS data definition file for the animalFarm_01 sample program.
 #
-# To generate the Python code:
+# To generate the Python code while in the GitHub repo clone:
 #
-#       ../gDS/gDSCodeGen animalFarm_01    >>>>>>> Produces animalFarm_01.py in the default directory
+#       ../gDS_V2/gDSCompile animalFarm_01    >>>>>>> Produces animalFarm_01.py in the default directory
 #
 # gCounty - The county a farm is in. There is no need to manage for concurrency.
 #
 # Keyword       Item name               Default column value if cited
 # =======       =========               =============================
 defineTable     gCounty                                         # Table definition
-defineColumn    gCounty_Name                                    # The county's name
-defineIndex     gCounty_Name2Ref                                # A dictionary to look up county reference by name
-defineColumn    gCounty_RowStatus       None                    # For concurrency control but - not used
+defineName      gCounty_Name                                    # The county's name
+defineIndexOneRef gCounty_Name_2Ref     gCounty_Name            # A dictionary to look up county reference by name
+defineRowStatus gCounty_RowStatus       None                    # For concurrency control but - not used
 endTable
 #
 # gFarm - The farms animals belong to. There is no need to manage for concurrency.
@@ -20,9 +20,9 @@ endTable
 # Keyword       Item name               Default column value if cited
 # =======       =========               =============================
 defineTable     gFarm                                           # Table definition
-defineColumn    gFarm_Name                                      # The farm's name
-defineColumn    gFarm_gCounty_Ref       None                    # The county the farm is in
-defineColumn    gFarm_RowStatus         None                    # For concurrency control but - not used
+defineName      gFarm_Name                                      # The farm's name
+defineOneRef    gFarm_gCounty_Ref       gCounty     None        # The county the farm is in
+defineRowStatus gFarm_RowStatus         None                    # For concurrency control but - not used
 endTable
 #
 # gAnimal - The animals on a farm. Managed with MasterLock only in this exercise.
@@ -30,10 +30,11 @@ endTable
 # Keyword       Item name               Default column value if cited
 # =======       =========               =============================
 defineTable     gAnimal                                         # Table definition
-defineColumn    gAnimal_gFarm_Ref                               # The farm owning the animal
+defineOneRef    gAnimal_gFarm_Ref       gFarm       None        # The farm owning the animal
 defineColumn    gAnimal_Type                                    # The kind of animal
-defineColumn    gAnimal_Name                                    # The animal's name
-defineColumn    gAnimal_RowStatus       None                    # For row locks but - not used
+defineName      gAnimal_Name                                    # The animal's name
+defineIndexManyRefs gAnimal_Type_2Refs  gAnimal_Type		# Index of identical animal types
+defineRowStatus gAnimal_RowStatus       None                    # For row locks but - not used
 endTable
 
 #

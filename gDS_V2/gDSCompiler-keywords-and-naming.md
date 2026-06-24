@@ -64,6 +64,10 @@ endTable
 
 ## Rules the compiler checks
 
+The schema syntax and semantics are managed at two levels. The *keywords* stand on their own and specify a complete interface. As well, the *naming conventions* specify a complete interface. There is duplication between the levels - *something* is needed at both levels so the two specifictions end up matching each other.
+
+Here are some top-level rules:
+
 | Rule | What it means |
 |------|----------------|
 | Legal words only | Use only the keywords above |
