@@ -27,7 +27,7 @@ An **index** is a **dictionary** for fast lookup — like “find the row whose 
 
 You write the plan once in a `.dd` file. The compiler writes boring code for you: add a row, delete rows, fix broken pointers, save to JSON.
 
-There is no SQL. No database layer. Just Python lists, row numbers, and plain Python functions.
+There is no SQL. No database layer. Just Python lists (in shared memory), row numbers, and plain Python functions.
 
 ---
 
