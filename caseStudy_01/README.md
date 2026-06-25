@@ -1,4 +1,4 @@
-# Animal Farm Case Study
+# Animal Farm Case Study 1
 
 [This program uses gDS_V2.]
 
@@ -38,26 +38,32 @@ Programmers often store related information in **tables**, like spreadsheets.
 
 ### County table (`gCounty`)
 
+
 | Row # | County name |
-|-------|-------------|
+| ----- | ----------- |
 | 0     | County A    |
 | 1     | County B    |
 
+
 ### Farm table (`gFarm`)
 
+
 | Row # | Farm name | County (row #) |
-|-------|-----------|----------------|
+| ----- | --------- | -------------- |
 | 0     | Farm A    | 0              |
 | 1     | Farm B    | 1              |
 | 2     | Farm C    | 1              |
 
+
 ### Animal table (`gAnimal`)
 
-| Row # | Animal type | Animal name   | Farm (row #) |
-|-------|-------------|---------------|--------------|
-| 0     | Cow         | Cow #01       | 0            |
-| 1     | Chicken     | Chicken #01   | 1            |
-| ...   | ...         | ...           | ...          |
+
+| Row # | Animal type | Animal name | Farm (row #) |
+| ----- | ----------- | ----------- | ------------ |
+| 0     | Cow         | Cow #01     | 0            |
+| 1     | Chicken     | Chicken #01 | 1            |
+| ...   | ...         | ...         | ...          |
+
 
 Each row gets a **row reference** (row number), starting at 0. Other tables use that number to point at related rows—like writing "see row 1" instead of copying the whole farm name everywhere.
 
@@ -65,11 +71,13 @@ Each row gets a **row reference** (row number), starting at 0. Other tables use 
 
 ## Files in this project
 
-| File | What it is |
-|------|------------|
-| `animalFarm_01.dd` | The **blueprint**. Describes the tables and columns. Not Python — you do not run this file directly. |
+
+| File               | What it is                                                                                                                                                |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `animalFarm_01.dd` | The **blueprint**. Describes the tables and columns. Not Python — you do not run this file directly.                                                      |
 | `animalFarm_01.py` | The **data layer**. Created automatically from the blueprint by a tool called `gDSCompile`. Holds the tables and helper functions like `gCounty_AddARow`. |
-| `animalFarm_01` | The **main program**. The demo you actually run. It creates counties and farms, starts workers, and prints results. |
+| `animalFarm_01`    | The **main program**. The demo you actually run. It creates counties and farms, starts workers, and prints results.                                       |
+
 
 **How `animalFarm_01.py` is born:**
 
@@ -78,7 +86,7 @@ animalFarm_01.dd  →  gDSCompile  →  animalFarm_01.py
    (blueprint)        (tool)         (Python code)
 ```
 
-If `animalFarm_01.py` is missing or older than `animalFarm_01.dd`, the main program will stop and tell you to run the code generator first.
+If `animalFarm_01.py` is missing or older than `animalFarm_01.dd`, the main program will stop and tell you to run the compiler first.
 
 ---
 
@@ -126,12 +134,12 @@ The demo follows this script:
 
 ## How to run
 
-You need **Python 3** installed.
+You need **Python 3** installed on a Linux host.
 
-First, make sure `animalFarm_01.py` exists (generate it if your instructor told you to):
+First, make sure `animalFarm_01.py` exists (clone the repo).:
 
 ```bash
-../gDS/gDSCompile animalFarm_01
+../gDS/gDSCompile animalFarm_01.dd
 ```
 
 Then run:
@@ -154,15 +162,17 @@ Then run:
 
 ## Quick glossary
 
-| Term | Simple meaning |
-|------|----------------|
-| **Table** | A grid of related information (like a spreadsheet page). |
-| **Row** | One record in a table (one county, one farm, or one animal). |
-| **Row reference** | The row’s ID number, used to link tables together. |
-| **gDS** | A system that keeps tables in memory and generates Python code from a `.dd` blueprint. |
-| **Process** | A separate running copy of work (like opening a second app). |
-| **Thread** | A lighter worker inside the same program. |
-| **Lock** | A rule that only one worker can change shared data at a time. |
+
+| Term              | Simple meaning                                                                         |
+| ----------------- | -------------------------------------------------------------------------------------- |
+| **Table**         | A grid of related information (like a spreadsheet page).                               |
+| **Row**           | One record in a table (one county, one farm, or one animal).                           |
+| **Row reference** | The row’s ID number, used to link tables together.                                     |
+| **gDS**           | A system that keeps tables in memory and generates Python code from a `.dd` blueprint. |
+| **Process**       | A separate running copy of work (like opening a second app).                           |
+| **Thread**        | A lighter worker inside the same program.                                              |
+| **Lock**          | A rule that only one worker can change shared data at a time.                          |
+
 
 ---
 
