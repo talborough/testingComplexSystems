@@ -1,11 +1,11 @@
 # gDS V2 — Compiler and Exerciser
 
-This project features two tools:
+This directory contains two tools:
 
-- **gDSCompile** — reads a text file that describes your tables (`.dd`) and writes Python code (`.py`) that stores and manages them.
+- **gDSCompile** — reads a text file that describes your tables/schema (`.dd`) and writes Python code (`.py`) that stores and manages them.
 - **gDSExer** — a practice program. You pick commands from a menu to try the Python code generated above; you can record what you typed and play it back later to check nothing broke.
 
-Your application program imports the `.py` file and calls its functions. gDSExer uses the same file and functions — it is just a safe place to learn them.
+Your application program imports the `.py` file and calls its functions. gDSExer uses the same file and functions — it is just a safe place to learn how to use them.
 
 To add to what's below see: [gDSCompiler-keywords-and-naming.md](gDSCompiler-keywords-and-naming.md).
 
@@ -18,16 +18,16 @@ And: [gDSExer-keywords-and-naming.md](gDSExer-keywords-and-naming.md).
 Imagine a spreadsheet, but stored in Python:
 
 - Each **column** is its own Python **list** (Name list, Kind list, FarmRef list, …).
-- Every Python list in a table has the **same length**. That length is the row count.
+- Every Python list in a given table has the **same length**. That length is the total row count of the table.
 - **Row 0** means the first item in every column. **Row 1** means the second item, and so on.
 
-A **reference** (ref) is a row number in **another** table. Example: animal row 0 might store `0` in its FarmRef column to mean “point at farm row 0.” `None` means “points nowhere.”
+A **reference** (ref) is a pointer to a row in a table. Example: animal row 0 might store a `15` in its FarmRef column to mean “point at row 15 in the farm table.” That would indicate the animal belonged to the farm described by row `15` in the farm table. `None` means “points nowhere.”
 
-An **index** is a **dictionary** for fast lookup — like “find the row whose Name is Bessie.”
+An **index** is a **dictionary** for fast lookup in a given table — it can “find the animal row reference whose Name is Bessie.”
 
-You write the plan once in a `.dd` file. The compiler writes boring code for you: add a row, delete rows, fix broken pointers, save to JSON.
+You write the plan/schema once in a `.dd` file. The compiler writes the boring code for you: add a row, delete rows, fix outdated pointers, save to JSON.
 
-There is no SQL. No database layer. Just Python lists (in shared memory), row numbers, and plain Python functions.
+There is no SQL. No database layer. No code or execution elsewhere. Just Python lists (in shared memory), row numbers, and plain Python functions.
 
 ---
 
@@ -106,10 +106,10 @@ The .py file first creates all the tables mentioned in the schema file. The tabl
 
 When you delete a row in a table, two things happen:
 
-1. Rows below it **slide up** (row 2 might become row 1).
-2. Other tables will then be referring to the **old** (wrong) row numbers.
+1. Rows below it in the table **slide up** (row 2 might become row 1).
+2. References in other tables will then be referring to **old** (wrong) row numbers in the initial table.
 
-A **RAL** (Reference Adjustment List) is a cheat sheet from `DeleteRows`. For each **old** row number it says:
+The fix is a **RAL** (Reference Adjustment List). A RAL is a cheat sheet from `DeleteRows`. For each **old** row number it says:
 
 
 | RAL value    | Meaning                                         |
@@ -127,13 +127,13 @@ Example — delete row 1 (`Wilbur`) from gAnimal:
                   2    'Cluck'       1
 ```
 
-After the delete, gAnimal has two rows. Cluck used to be row 2; now she is row 1.
+After the delete, gAnimal has two rows. Cluck used to be at row 2; now she is row 1.
 
 **Step 1:** Call `DeleteRows` on one table. Rows are deleted as directed and you get the RAL back.
 
-**Step 2:** Call `ApplyRALTo_…` on each table that pointed into the deleted table. That updates or clears the out of date pointers.
+**Step 2:** Call `ApplyRALTo_…`, with the RAL, on each table that pointed into the table with the deleted rows. That updates or clears the out-of-date pointers.
 
-You choose **when** to run step 2 and whether to clear or update the old pointers. gDS does not auto-fix other tables for you.
+You choose **when** to run step 2 and **whether** to clear or update the old pointers. gDS does not auto-fix other tables for you.
 
 **Delete modes:**
 
