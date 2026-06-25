@@ -21,9 +21,9 @@ Imagine a spreadsheet, but stored in Python:
 - Every Python list in a given table has the **same length**. That length is the total row count of the table.
 - **Row 0** means the first item in every column. **Row 1** means the second item, and so on.
 
-A **reference** (ref) is a pointer to a row in a table. Example: animal row 0 might store a `15` in its FarmRef column to mean “point at row 15 in the farm table.” That would indicate the animal belonged to the farm described by row `15` in the farm table. `None` means “points nowhere.”
+A **reference** (ref) is a pointer to a row in a table. Example: Animal table row 0 might store a `15` in its FarmRef column to mean “point at row 15 in the Farm table.” That would indicate the Animal belonged to the Farm described by row `15` in the Farm table. `None` would mean “points nowhere.”
 
-An **index** is a **dictionary** for fast lookup in a given table — it can “find the animal row reference whose Name is Bessie.”
+An **index** is a Python **dictionary** for fast lookup in a given table — it can “find the Animal row reference whose Name is Bessie.”
 
 You write the plan/schema once in a `.dd` file. The compiler writes the boring code for you: add a row, delete rows, fix outdated pointers, save to JSON.
 
