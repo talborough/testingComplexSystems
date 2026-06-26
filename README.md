@@ -4,5 +4,4 @@ This repo contains material used by the https://TestingComplexSystems.com web si
 
 Note this code can be (git) cloned and viewed on either Windows or UNIX-like systems but at this time it will only run on Linux. Please consult your favorite AI chatterbox for details on the issues involved. Just ask: "Python multiprocessing - Windows vs. Linux".
 
-This is the first "look see" of the gDS V2 compiler and exerciser. Testing and updating the case studies is underway.
-
+This is the first "look see" of the gDS V2 compiler and exerciser. Note how referential integrity is handled using a Reference Adjustment List (RAL) (see gDS_V2/README.md).

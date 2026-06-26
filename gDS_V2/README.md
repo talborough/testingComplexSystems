@@ -11,7 +11,7 @@ To add to what's below see: [gDSCompiler-keywords-and-naming.md](gDSCompiler-key
 
 ---
 
-## The idea
+## The concept
 
 Imagine a spreadsheet stored entirely in Python:
 
@@ -23,9 +23,11 @@ A **reference** (or **ref**) is a row number that points to another table. For e
 
 An **index** is a Python **dictionary** that makes searching fast. For example, it can quickly find the row number of the Animal whose `Name` is `"Bessie"`.
 
-You describe the table layout once in a `.dd` file. The compiler generates the repetitive code for you: adding rows, deleting rows, updating references, and saving the data as JSON. Changes are trivial to make.
+When rows get deleted old references to them are updated using a Reference Adjustment List (RAL) (see below).
 
-There is no SQL, no database, and no code running anywhere else. Everything is just Python lists (stored in memory), row numbers, and ordinary Python functions.
+So you describe the table layout once in a `.dd` file. The compiler generates the repetitive code for you: adding rows, deleting rows, updating references, and saving the data to files as JSON. Changes to the schema are trivial to make.
+
+There is no SQL, no database, and no code running anywhere else. Everything is just Python lists (stored in shared, global memory), row numbers, and ordinary Python functions.
 
 ---
 
@@ -100,7 +102,7 @@ The .py file first creates all the tables mentioned in the schema file. The tabl
 
 ---
 
-## Deleting rows and the RAL
+## Deleting rows and the Reference Adjustment List (RAL)
 
 When you delete a row in a table, two things happen:
 
