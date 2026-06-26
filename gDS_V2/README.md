@@ -2,32 +2,30 @@
 
 This directory contains two tools:
 
-- **gDSCompile** — reads a text file that describes your tables/schema (`.dd`) and writes Python code (`.py`) that stores and manages them.
-- **gDSExer** — a practice program. You pick commands from a menu to try the Python code generated above; you can record what you typed and play it back later to check nothing broke.
+- **gDSCompile** — This program reads a text file that describes your tables/schema (`.dd`) and writes Python code (`.py`) that creates the tables and manages them.
+- **gDSExer** — This program works with the `.dd` and `.py` files from above. You pick commands from a menu to use the Python tables and helper code; you can also record what you type and play the recording back later to check nothing broke.
 
-Your application program imports the `.py` file and calls its functions. gDSExer uses the same file and functions — it is just a safe place to learn how to use them.
+Your application program imports the `.py` file and calls its functions. gDSExer uses the same file and functions — it is just a safe, handy place to learn how to use them.
 
-To add to what's below see: [gDSCompiler-keywords-and-naming.md](gDSCompiler-keywords-and-naming.md).
-
-And: [gDSExer-keywords-and-naming.md](gDSExer-keywords-and-naming.md).
+To add to what's below see: [gDSCompiler-keywords-and-naming.md](gDSCompiler-keywords-and-naming.md) and: [gDSExer-keywords-and-naming.md](gDSExer-keywords-and-naming.md).
 
 ---
 
 ## The idea
 
-Imagine a spreadsheet, but stored in Python:
+Imagine a spreadsheet stored entirely in Python:
 
-- Each **column** is its own Python **list** (Name list, Kind list, FarmRef list, …).
-- Every Python list in a given table has the **same length**. That length is the total row count of the table.
-- **Row 0** means the first item in every column. **Row 1** means the second item, and so on.
+- Each **column** is a Python **list** (`Name`, `Kind`, `FarmRef`, etc.).
+- Every list in a table has the **same number of items**. That number is the table's row count.
+- **Row 0** is the first item in every list. **Row 1** is the second item, and so on.
 
-A **reference** (ref) is a pointer to a row in a table. Example: Animal table row 0 might store a `15` in its FarmRef column to mean “point at row 15 in the Farm table.” That would indicate the Animal belonged to the Farm described by row `15` in the Farm table. `None` would mean “points nowhere.”
+A **reference** (or **ref**) is a row number that points to another table. For example, an Animal in row `0` might have a `FarmRef` value of `15`, meaning "this Animal belongs to the Farm in row `15` of the Farm table." A value of `None` means "points nowhere."
 
-An **index** is a Python **dictionary** for fast lookup in a given table — it can “find the Animal row reference whose Name is Bessie.”
+An **index** is a Python **dictionary** that makes searching fast. For example, it can quickly find the row number of the Animal whose `Name` is `"Bessie"`.
 
-You write the plan/schema once in a `.dd` file. The compiler writes the boring code for you: add a row, delete rows, fix outdated pointers, save to JSON.
+You describe the table layout once in a `.dd` file. The compiler generates the repetitive code for you: adding rows, deleting rows, updating references, and saving the data as JSON. Changes are trivial to make.
 
-There is no SQL. No database layer. No code or execution elsewhere. Just Python lists (in shared memory), row numbers, and plain Python functions.
+There is no SQL, no database, and no code running anywhere else. Everything is just Python lists (stored in memory), row numbers, and ordinary Python functions.
 
 ---
 
