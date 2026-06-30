@@ -9,6 +9,8 @@ Your application program imports the `.py` file and calls its functions. gDSExer
 
 To add to what's below see: [gDSCompiler-keywords-and-naming.md](gDSCompiler-keywords-and-naming.md) and: [gDSExer-keywords-and-naming.md](gDSExer-keywords-and-naming.md).
 
+gDS V2 still uses the same core data model as gDS V1 (tables are collections of Python lists); the syntax for defining the columns has changed. Also, referential integrity has been neatly bolted on and better (AI-generated) docs have been created - their delivery is still in flux.
+
 ---
 
 ## The concept
@@ -19,13 +21,13 @@ Imagine a spreadsheet stored entirely in Python:
 - Every list in a table has the **same number of items**. That number is the table's row count.
 - **Row 0** is the first item in every list. **Row 1** is the second item, and so on.
 
-A **reference** (or **ref**) is a row number that points to another table. For example, an Animal in row `0` might have a `FarmRef` value of `15`, meaning "this Animal belongs to the Farm in row `15` of the Farm table." A value of `None` means "points nowhere."
+A **reference** (or **ref**) is a row number in a table. For example, an Animal in row `0` might have a `FarmRef` column with a value of `15`, meaning "the Animal in row `0` belongs to the Farm in row `15`." A value of `None` would mean "points nowhere."
 
 An **index** is a Python **dictionary** that makes searching fast. For example, it can quickly find the row number of the Animal whose `Name` is `"Bessie"`.
 
-When rows get deleted old references to them are updated using a Reference Adjustment List (RAL) (see below).
+When rows in a table get deleted, old references to that table get updated using a Reference Adjustment List (RAL) (see below).
 
-So you describe the table layout once in a `.dd` file. The compiler generates the repetitive code for you: adding rows, deleting rows, updating references, and saving the data to files as JSON. Changes to the schema are trivial to make.
+You describe the table layout once in a `.dd` file. The compiler generates the repetitive code for you: adding rows, deleting rows, updating references, and saving the data to files as JSON. Changes to the schema are trivial to make.
 
 There is no SQL, no database, and no code running anywhere else. Everything is just Python lists (stored in shared, global memory), row numbers, and ordinary Python functions.
 
@@ -50,6 +52,8 @@ Table **gAnimal**:
 ---
 
 ## What you write vs what you get
+
+
 
 ### The `.dd` file (you write this)
 
@@ -102,6 +106,7 @@ The .py file first creates all the tables mentioned in the schema file. The tabl
 
 ---
 
+
 ## Deleting rows and the Reference Adjustment List (RAL)
 
 When you delete a row in a table, two things happen:
@@ -147,12 +152,15 @@ You choose **when** to run step 2 and **whether** to clear or update the old poi
 
 ---
 
-## Things gDS does NOT do
 
-- **No automatic “fixup across all tables.”** You run delete, then apply the RAL in the way you want.
-- **No built-in locking for multiple programs.** If several programs share the data, you design how they interact (locks, rules, etc.).
+## Things gDS does NOT do when deleting rows in a table
+
+- **There is no automatic “fixup across all tables.”** You first delete the rows, then apply the RAL according to the behavior you want.
+
+- **There is no built-in locking for multiple processes.** If multiple processes share the same data, you need to define how they interact, including any locks, rules, or coordination mechanisms. One approach is very simple - run the program in **cycles**: let the multiple processes run for a while, then pause all activity except for one process, delete unnecessary rows, fix the references, and then resume activity again with multiple processes.
 
 ---
+
 
 ## gDSExer (the practice tool)
 
@@ -186,11 +194,13 @@ Command list: [gDSExer-keywords-and-naming.md](gDSExer-keywords-and-naming.md).
 
 ---
 
+
+
 ## Quick start
 
 ```bash
 ./gDSCompile mySchema.dd    # make mySchema.py
-./gDSExer mySchema.dd       # try it in the terminal
+./gDSExer mySchema.dd       # try it at the terminal
 ```
 
 
@@ -202,6 +212,8 @@ Command list: [gDSExer-keywords-and-naming.md](gDSExer-keywords-and-naming.md).
 
 
 ---
+
+
 
 ## Files in this folder
 
@@ -217,16 +229,4 @@ Command list: [gDSExer-keywords-and-naming.md](gDSExer-keywords-and-naming.md).
 
 
 ---
-
-## Five questions to ask yourself
-
-
-| Question                        | Short answer                                                           |
-| ------------------------------- | ---------------------------------------------------------------------- |
-| Where is my data?               | In Python lists and dicts                                              |
-| Where do I define tables?       | In the `.dd` file                                                      |
-| What is a RAL?                  | A map from old row numbers to new ones after a delete                  |
-| Why two steps (delete + apply)? | So **you** control when and how other tables get fixed                 |
-| What is gDSExer for?            | Learning and testing — not designing the logical structure of your app |
-
 
