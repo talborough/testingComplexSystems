@@ -13,6 +13,8 @@ gDS V2 still uses the same core data model as gDS V1 (tables are collections of 
 
 ---
 
+
+
 ## The concept
 
 Imagine a spreadsheet stored entirely in Python:
@@ -33,6 +35,8 @@ There is no SQL, no database, and no code running anywhere else. Everything is j
 
 ---
 
+
+
 ## A small example
 
 Table **gAnimal**:
@@ -50,6 +54,8 @@ Table **gAnimal**:
 - **RowStatus** — a "flag" on every row (your program decides what it means). Required on every table. It also must be the last column for the table in the `.dd` file. If this column exists for a given row, the entire row has been completely added to the table.
 
 ---
+
+
 
 ## What you write vs what you get
 
@@ -107,6 +113,7 @@ The .py file first creates all the tables mentioned in the schema file. The tabl
 ---
 
 
+
 ## Deleting rows and the Reference Adjustment List (RAL)
 
 When you delete a row in a table, two things happen:
@@ -153,13 +160,14 @@ You choose **when** to run step 2 and **whether** to clear or update the old poi
 ---
 
 
+
 ## Things gDS does NOT do when deleting rows in a table
 
 - **There is no automatic “fixup across all tables.”** You first delete the rows, then apply the RAL according to the behavior you want.
-
 - **There is no built-in locking for multiple processes.** If multiple processes share the same data, you need to define how they interact, including any locks, rules, or coordination mechanisms. One approach is very simple - run the program in **cycles**: let the multiple processes run for a while, then pause all activity except for one process, delete unnecessary rows, fix the references, and then resume activity again with multiple processes.
 
 ---
+
 
 
 ## gDSExer (the practice tool)
@@ -229,4 +237,18 @@ Command list: [gDSExer-keywords-and-naming.md](gDSExer-keywords-and-naming.md).
 
 
 ---
+
+
+
+## Five questions to ask yourself
+
+
+| Question                         | Short answer                                                           |
+| -------------------------------- | ---------------------------------------------------------------------- |
+| Where is my data?                | In Python lists and dicts                                              |
+| Where do I define tables?        | In the `.dd` file                                                      |
+| What is a RAL?                   | A map from old row numbers to new ones after a delete                  |
+| Why two steps (delete + update)? | So **you** control when and how other tables get updated               |
+| What is gDSExer for?             | Learning and testing — not designing the logical structure of your app |
+
 
