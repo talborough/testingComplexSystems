@@ -1,8 +1,9 @@
 # gDS V2 — Compiler and Exerciser
 
-This directory contains two tools:
+The **gDS_V2** directory contains two tools:
 
 - **gDSCompile** — This program reads a text file that describes your tables/schema (`.dd`) and writes Python code (`.py`) that creates the tables and manages them.
+
 - **gDSExer** — This program works with the `.dd` and `.py` files from above. You pick commands from a menu to use the Python tables and helper code; you can also record what you type and play the recording back later to check nothing broke.
 
 Your application program imports the `.py` file and calls its functions. gDSExer uses the same file and functions — it is just a safe, handy place to learn how to use them.
