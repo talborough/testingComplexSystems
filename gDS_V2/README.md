@@ -1,6 +1,6 @@
 # gDS V2 — Compiler and Exerciser
 
-The **gDS_V2** directory contains two tools:
+The **testingComplexSystems/gDS_V2** directory contains two tools:
 
 - **gDSCompile** — This program reads a text file that describes your tables/schema (`.dd`) and writes Python code (`.py`) that creates the tables and manages them.
 
