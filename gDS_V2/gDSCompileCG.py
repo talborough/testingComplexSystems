@@ -834,6 +834,8 @@ def generate_code_step_1_py_file_start(out_py_filename, schema_stem):
             import json
             import sys
             from multiprocessing import *
+            if sys.version_info >= (3, 14):
+                set_start_method("fork", force=True)
             gDSMgr = Manager()
             """
     _append_generated_code_block(textwrap.dedent(body).splitlines())

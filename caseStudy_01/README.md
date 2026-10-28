@@ -139,7 +139,7 @@ You need **Python 3** installed on a Linux host.
 First, make sure `animalFarm_01.py` exists (clone the repo).:
 
 ```bash
-../gDS/gDSCompile animalFarm_01.dd
+../gDS_V2/gDSCompile animalFarm_01.dd
 ```
 
 Then run:
