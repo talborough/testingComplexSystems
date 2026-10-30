@@ -2,9 +2,9 @@
 
 **A hands-on lab for testing shared folders across Linux computers**
 
-This project is part of [Case Study 3](https://TestingComplexSystems.com) from TestingComplexSystems.com. It is meant for learning how complex computer systems behave when things go wrong — not for everyday file sharing.
+This has *not* been converted to use gDS V2 yet or, run on Python V3.14 and above. DO NOT try and run it unless this work has been performed on it.
 
-This has *not* been converted to use gDS V2 yet!
+This project is part of [Case Study 3](https://TestingComplexSystems.com) from TestingComplexSystems.com. It is meant for learning how complex computer systems behave when things go wrong — not for everyday file sharing.
 
 ---
 
