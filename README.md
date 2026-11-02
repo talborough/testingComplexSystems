@@ -1,10 +1,10 @@
-# Testing Complex Systems - Preface
+# Testing Complex Systems - README
 
-Testing Complex Systems organizes and presents material that can be used to help test concurrent and distributed computer systems.
+Testing Complex Systems organizes and presents material that can be used to help test concurrent and distributed computer systems. This repo contains a schema compiler and case studies.
 
-## Testing Complex Systems - Document Sources
+## Testing Complex Systems - Sources of Documentation
 
-The Testing Complex Systems online environment involves 3 separate web-UIs for now:
+The Testing Complex Systems online documentation involves 3 separate web-UIs for now:
 
 - [Original Testing Complex Systems website](https://TestingComplexSystems.com) - A readable and broad presentation of "test platforms" and a Python data handling pattern to implement them called gDS (global Data Store). There is a "publish date" listed for the site at the top of every website page.
 
