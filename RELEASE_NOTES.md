@@ -11,7 +11,7 @@
 
 ## 10/27/2026
 
-- Make the V2 compiler generate code to set which "fork" method to use at runtime.
+- Make the V2 compiler generate code to set which "fork" method to use at runtime. Required for Python 3.14 and above.
 
-**YOUR `.dd` FILES MUST BE RE-COMPILED WITH THIS NEW COMPILER VERSION!!**
+**YOUR `.dd` FILES MUST BE RE-COMPILED WITH THIS NEW COMPILER VERSION IN ORDER FOR THIS TO TAKE EFFECT!!**
 
