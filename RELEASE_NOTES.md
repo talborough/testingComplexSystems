@@ -1,5 +1,7 @@
 # Release notes for the code in the testingComplexSystems repo
 
+See the LinkedIn group Testing Complex Systems for additional information.
+
 ## 11/02/2026
 
 - Add some release notes - this file.

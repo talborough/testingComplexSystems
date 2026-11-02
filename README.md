@@ -2,6 +2,8 @@
 
 Testing Complex Systems organizes and presents material that can be used to help test concurrent and distributed computer systems. This repo contains a schema compiler and case studies.
 
+See the LinkedIn group Testing Complex Systems for additional information.
+
 ## Testing Complex Systems - Sources of Documentation
 
 The Testing Complex Systems online documentation involves 3 separate web-UIs for now:
