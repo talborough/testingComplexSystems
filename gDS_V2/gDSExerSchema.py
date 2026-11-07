@@ -25,7 +25,7 @@ def _resolve_dd_basename(dd_path):
     if not dd_path.endswith(".dd"):
         raise ValueError(f"schema path must end with .dd: {dd_path!r}")
     if not os.path.isfile(dd_path):
-        raise FileNotFoundError(dd_path)
+        raise FileNotFoundError(f"schema file not found: {dd_path}")
     return dd_path[:-3]
 
 
@@ -51,7 +51,10 @@ def _detect_ordinary_containers_from_py(py_path):
 def _load_gds_module(py_path):
     py_path = os.path.abspath(py_path)
     if not os.path.isfile(py_path):
-        raise FileNotFoundError(py_path)
+        raise FileNotFoundError(
+            f"generated Python module not found: {py_path}. "
+            "Compile the schema with gDSCompile first."
+        )
     mod_name = os.path.splitext(os.path.basename(py_path))[0]
     spec = importlib.util.spec_from_file_location(mod_name, py_path)
     if spec is None or spec.loader is None:
@@ -269,12 +272,15 @@ class GDSExerContext:
     def _parse_schema(self):
         cg = self.codegen
         _resolve_dd_basename(self.dd_path)
+        # The exerciser's own schema load uses the -O mirror (ordinary lists),
+        # same as the compiler, so gDSExer runs on Windows or Linux.
         cg.Cli = SimpleNamespace(
             dd_path=self.dd_path,
             verbose=False,
             dump=False,
-            ordinary_containers=False,
+            ordinary_containers=True,
         )
+        cg._verify_codegen_mirror_is_plain()
         cg.parseSchemaFileToTables()
 
 

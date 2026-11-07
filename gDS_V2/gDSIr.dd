@@ -3,7 +3,8 @@
 #
 #       gDSCompile gDSIr.dd
 #
-# (-O is turned on automatically; you do not need to pass -O.)
+# (-O is turned on automatically so the compiler and exerciser use ordinary
+# lists and run on Windows or Linux. You do not need to pass -O.)
 #
 
 defineTable     dsTable

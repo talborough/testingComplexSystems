@@ -15,12 +15,13 @@ Cli = None
 
 
 def _verify_codegen_mirror_is_plain():
-    """``gDSIr.py`` must use plain lists; the compile stack never uses ``Manager``."""
+    """``gDSIr.py`` must use plain lists; the compiler and exerciser never use ``Manager``."""
     if type(dsTable_Name).__name__ == "list":
         return
     raise RuntimeError(
         "gDSIr.py is trying to use multiprocessing Manager storage, which is not allowed; "
-        "rebuild gDSIr.py using 'gDSCompile -O gDSIr.dd'"
+        "the compiler and exerciser use ordinary lists so they run on Windows or Linux. "
+        "Rebuild gDSIr.py using 'gDSCompile -O gDSIr.dd'"
     )
 
 
@@ -808,7 +809,7 @@ def apply_processor_schema_O_mode(dd_filepath):
         "Phase",
         "O",
         f"{intro}. Enabling -O for this run so {out_py!r} uses ordinary [] and {{}} "
-        "(not multiprocessing Manager; so the code generator itself can run anywhere).",
+        "(not multiprocessing Manager; so the compiler and exerciser run on Windows or Linux).",
     )
 
 
