@@ -18,3 +18,8 @@ Imagine you want to test several Linux computers running highly-available Oracle
 4. **Check** that data stays correct and report problems if something breaks
 
 Think of it like a science experiment: you build a DBMS-based test environment, run workloads on it, poke at it, and watch what happens.
+
+The case study also explores the task of creating a test platform:
+
+1. Use the AI-based IDE Cursor to write the test platform code.
+2. Use gDS as the data-handling core of the test platform.
