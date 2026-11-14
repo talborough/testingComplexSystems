@@ -1,0 +1,1 @@
+gDSCompile: gDSSchema:828: {schema}: Line 4: (Phase 1 verify F) defineIndexManyRefs 'gAnimal_Kind_2Refs' requires the key column (column to index) as optional value 1

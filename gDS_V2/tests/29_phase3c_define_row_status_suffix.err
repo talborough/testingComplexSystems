@@ -1,0 +1,1 @@
+gDSCompile: gDSSchema:623: {schema}: Line 3: (Phase 3 verify C) defineRowStatus 'gAnimal_Status' must end with '_RowStatus'

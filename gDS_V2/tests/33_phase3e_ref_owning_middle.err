@@ -1,0 +1,1 @@
+gDSCompile: gDSSchema:684: {schema}: Line 7: (Phase 3 verify E) defineOneRef 'gAnimal_gAnimal_Ref' middle segment 'gAnimal' cannot be the owning table 'gAnimal'

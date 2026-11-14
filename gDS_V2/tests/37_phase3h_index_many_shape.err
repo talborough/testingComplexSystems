@@ -1,0 +1,1 @@
+gDSCompile: gDSSchema:772: {schema}: Line 4: (Phase 3 verify H) defineIndexManyRefs 'gAnimal_Kind2Refs' must be 'gAnimal_<tail>_2Refs'

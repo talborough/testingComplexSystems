@@ -1,0 +1,3 @@
+defineTable gAnimal
+defineName gAnimal_Name
+endTable

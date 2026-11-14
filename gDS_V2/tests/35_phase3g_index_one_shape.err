@@ -1,0 +1,1 @@
+gDSCompile: gDSSchema:740: {schema}: Line 3: (Phase 3 verify G) defineIndexOneRef 'gAnimal_Name2Ref' must be 'gAnimal_<tail>_2Ref'

@@ -1,0 +1,1 @@
+gDSCompile: gDSSchema:782: {schema}: Line 4: (Phase 3 verify H) defineIndexManyRefs 'gAnimal_Kind_2Refs' implies column 'gAnimal_Kind' but optional value 1 is 'gAnimal_Name'

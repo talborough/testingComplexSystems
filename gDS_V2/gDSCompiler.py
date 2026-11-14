@@ -280,7 +280,7 @@ class SchemaParser:
 
     def _error(self, line: int, message: str) -> str:
         driver_line = inspect.currentframe().f_back.f_lineno
-        return f"gDSCompile:{driver_line}: {self.source_path}:{line}: {message}"
+        return f"gDSCompile:{driver_line}: {self.source_path}: Line {line}: {message}"
 
 
 # ---------------------------------------------------------------------------
@@ -369,8 +369,9 @@ class GDSCompiler:
 
     def _parse_error(self, schema_path, schema_line_no, message):
         driver_line = inspect.currentframe().f_back.f_lineno
-        dd_line = schema_line_no if schema_line_no is not None else "<None>"
-        return f"gDSCompile:{driver_line}: {schema_path}:{dd_line}: {message}"
+        if schema_line_no is None:
+            return f"gDSCompile:{driver_line}: {schema_path}:<None>: {message}"
+        return f"gDSCompile:{driver_line}: {schema_path}: Line {schema_line_no}: {message}"
 
     def _build_singular_ir(self, dd_path: str, node: SingularDef) -> None:
         if node.keyword not in gDSSchema._TOP_LEVEL_SINGULAR_ROW_SPECS:

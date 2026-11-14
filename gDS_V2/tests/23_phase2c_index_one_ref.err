@@ -1,0 +1,1 @@
+gDSCompile: gDSSchema:1024: {schema}: Line 3: (Phase 2 verify C) defineIndexOneRef 'gAnimal_Name_2Ref' cites column 'gAnimal_Missing', which is not a column in table 'gAnimal'

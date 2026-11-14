@@ -1,0 +1,1 @@
+gDSCompile: gDSCompile:469: {schema}: Line 4: (Verify D) defineRowStatus must be the last inner directive before endTable (nothing after RowStatus)

@@ -1,0 +1,13 @@
+defineTable gFarm
+defineName gFarm_Name
+defineRowStatus gFarm_RowStatus None
+endTable
+defineTable gTown
+defineName gTown_Name
+defineRowStatus gTown_RowStatus None
+endTable
+defineTable gAnimal
+defineName gAnimal_Name
+defineOneRef gAnimal_gFarm_Ref gTown
+defineRowStatus gAnimal_RowStatus None
+endTable

@@ -1,0 +1,13 @@
+gDSCompile: gDSSchema:1062: {schema}:<None>: (Phase 2 verify D) reference cycle detected among tables
+  Cycle: gB -> gA -> gB
+  References on this cycle:
+    gB --gB_gA_Ref (defineOneRef)--> gA  (Line 8)
+    gA --gA_gB_Ref (defineOneRef)--> gB  (Line 3)
+  Side-effects of a cycle:
+    - DeleteRows / ApplyRAL need a clear order to update referencing tables;
+      a cycle has no valid topological order, so updating references is undefined.
+    - Generated code may apply RAL updates in an order that never stabilizes.
+  To eliminate the cycle:
+    - Remove or repoint at least one defineOneRef/defineManyRefs on the cycle
+      so the reference graph is acyclic (a directed acyclic graph, or DAG:
+      follow refs from owning table to referenced table only; no table may reach itself).

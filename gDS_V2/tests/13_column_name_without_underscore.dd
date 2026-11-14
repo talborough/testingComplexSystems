@@ -1,0 +1,5 @@
+defineTable gAnimal
+defineName gAnimal_Name
+defineColumn Kind
+defineRowStatus gAnimal_RowStatus None
+endTable

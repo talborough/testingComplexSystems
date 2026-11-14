@@ -1,0 +1,1 @@
+gDSCompile: gDSSchema:1000: {schema}: Line 3: (Phase 2 verify B) defineManyRefs 'gAnimal_gAnimal_Refs' cannot reference its own table 'gAnimal'

@@ -1,0 +1,108 @@
+#!/usr/bin/python3
+"""Run gDSCompile on each ``*.dd`` case and compare stderr to the matching ``*.err`` file.
+
+``{schema}`` in an expected message is replaced with the absolute path of that case's ``.dd`` file.
+The program's two errors that are not produced by a schema file (a path that does not end in ``.dd``,
+and a ``.dd`` path that cannot be opened) are checked after the schema cases.
+"""
+
+import subprocess
+import sys
+from pathlib import Path
+
+
+TESTS = Path(__file__).resolve().parent
+COMPILER = TESTS.parent / "gDSCompile"
+
+
+def fail(name, expected, actual):
+    print(f"FAIL {name}")
+    print("--- expected ---")
+    print(expected, end="" if expected.endswith("\n") or expected == "" else "\n")
+    print("--- actual ---")
+    print(actual, end="" if actual.endswith("\n") or actual == "" else "\n")
+    return 1
+
+
+def check_schema_cases():
+    failures = 0
+    cases = sorted(TESTS.glob("*.dd"))
+    if not cases:
+        print("FAIL no .dd cases found")
+        return 1
+    for dd in cases:
+        expected_path = dd.with_suffix(".err")
+        if not expected_path.is_file():
+            print(f"FAIL {dd.name}: missing {expected_path.name}")
+            failures += 1
+            continue
+        expected = expected_path.read_text(encoding="utf-8").replace(
+            "{schema}", str(dd.resolve())
+        )
+        proc = subprocess.run(
+            [str(COMPILER), str(dd)],
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode == 0:
+            print(f"FAIL {dd.name}: gDSCompile succeeded")
+            failures += 1
+            continue
+        if proc.stdout:
+            print(f"FAIL {dd.name}: unexpected stdout")
+            print(proc.stdout, end="" if proc.stdout.endswith("\n") else "\n")
+            failures += 1
+            continue
+        if proc.stderr != expected:
+            failures += fail(dd.name, expected, proc.stderr)
+            continue
+        print(f"PASS {dd.name}")
+    return failures
+
+
+def check_cli_cases():
+    failures = 0
+    not_dd = TESTS / "not_a_schema.txt"
+    proc = subprocess.run(
+        [str(COMPILER), str(not_dd)],
+        capture_output=True,
+        text=True,
+    )
+    expected = (
+        "usage: gDSCompile [-h] [-v] [-d] [-O] <schema.dd>\n"
+        "gDSCompile: error: schema path must be a full filespec ending with .dd\n"
+    )
+    if proc.returncode != 2 or proc.stderr != expected or proc.stdout:
+        failures += fail("schema path must end with .dd", expected, proc.stderr)
+    else:
+        print("PASS schema path must end with .dd")
+
+    missing = TESTS / "does_not_exist.dd"
+    proc = subprocess.run(
+        [str(COMPILER), str(missing)],
+        capture_output=True,
+        text=True,
+    )
+    schema = str(missing.resolve())
+    expected = (
+        f"gDSCompile: cannot open schema file {schema!r} "
+        f"([Errno 2] No such file or directory: {schema!r})\n"
+    )
+    if proc.returncode != 1 or proc.stderr != expected or proc.stdout:
+        failures += fail("cannot open schema file", expected, proc.stderr)
+    else:
+        print("PASS cannot open schema file")
+    return failures
+
+
+def main():
+    failures = check_schema_cases() + check_cli_cases()
+    if failures:
+        print(f"\n{failures} failed")
+        return 1
+    print("\nAll gDSCompile error cases passed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -155,8 +155,9 @@ def _optional_tokens_after_name(parts):
 def _parse_error(schema_path, schema_line_no, message):
     """Caller line in ``gDSSchema``; schema path and .dd line (or ``<None>``) for every error."""
     driver_line = inspect.currentframe().f_back.f_lineno
-    dd_line = schema_line_no if schema_line_no is not None else "<None>"
-    return f"gDSSchema:{driver_line}: {schema_path}:{dd_line}: {message}"
+    if schema_line_no is None:
+        return f"gDSSchema:{driver_line}: {schema_path}:<None>: {message}"
+    return f"gDSSchema:{driver_line}: {schema_path}: Line {schema_line_no}: {message}"
 
 
 def parseSchemaFileToTables():
@@ -925,7 +926,7 @@ def _format_reference_cycle_message(cycle_tables, ref_edges):
         for o, d, var_name, line_no, vtype in ref_edges:
             if o == owning and d == dest:
                 ref_lines.append(
-                    f"    {o} --{var_name} ({vtype})--> {d}  (.dd line {line_no})"
+                    f"    {o} --{var_name} ({vtype})--> {d}  (Line {line_no})"
                 )
     if not ref_lines:
         ref_lines.append("    (no defineOneRef/defineManyRefs matched the cycle edges)")

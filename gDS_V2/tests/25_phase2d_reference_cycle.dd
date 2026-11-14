@@ -1,0 +1,10 @@
+defineTable gA
+defineName gA_Name
+defineOneRef gA_gB_Ref gB
+defineRowStatus gA_RowStatus None
+endTable
+defineTable gB
+defineName gB_Name
+defineOneRef gB_gA_Ref gA
+defineRowStatus gB_RowStatus None
+endTable

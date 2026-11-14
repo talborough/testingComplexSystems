@@ -1,0 +1,1 @@
+gDSCompile: gDSCompile:516: {schema}: Line 3: (Verify D) each table must have exactly one defineRowStatus (RowStatus column), last before endTable

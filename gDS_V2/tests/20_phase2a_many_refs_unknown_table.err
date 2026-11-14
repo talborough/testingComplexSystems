@@ -1,0 +1,1 @@
+gDSCompile: gDSSchema:974: {schema}: Line 3: (Phase 2 verify A) defineManyRefs 'gAnimal_gFarm_Refs' references unknown table 'gFarm'

@@ -1,0 +1,1 @@
+gDSCompile: gDSSchema:717: {schema}: Line 11: (Phase 3 verify F) defineOneRef 'gAnimal_gFarm_Ref' optional value 1 is 'gTown' but the column name implies referenced table 'gFarm'

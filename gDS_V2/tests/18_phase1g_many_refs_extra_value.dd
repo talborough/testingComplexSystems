@@ -1,0 +1,9 @@
+defineTable gFarm
+defineName gFarm_Name
+defineRowStatus gFarm_RowStatus None
+endTable
+defineTable gAnimal
+defineName gAnimal_Name
+defineManyRefs gAnimal_gFarm_Refs gFarm None
+defineRowStatus gAnimal_RowStatus None
+endTable

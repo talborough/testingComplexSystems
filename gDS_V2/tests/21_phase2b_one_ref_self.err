@@ -1,0 +1,1 @@
+gDSCompile: gDSSchema:1000: {schema}: Line 3: (Phase 2 verify B) defineOneRef 'gAnimal_gAnimal_Ref' cannot reference its own table 'gAnimal'

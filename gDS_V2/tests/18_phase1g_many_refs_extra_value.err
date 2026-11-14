@@ -1,0 +1,1 @@
+gDSCompile: gDSSchema:845: {schema}: Line 7: (Phase 1 verify G) defineManyRefs 'gAnimal_gFarm_Refs' must not specify optional value 2 (only optional value 1, the referenced table, is allowed)

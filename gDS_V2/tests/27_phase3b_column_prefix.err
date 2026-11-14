@@ -1,0 +1,1 @@
+gDSCompile: gDSSchema:594: {schema}: Line 3: (Phase 3 verify B) 'gOther_Kind' must start with 'gAnimal_' (table 'gAnimal')
